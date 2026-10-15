@@ -2,49 +2,7 @@
   "name": "kanso",
   "short": "kanso",
   "description": "自家制の极简探针（Monitor）主题：单档宽卡，读数、流量与价格一眼看全。",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "author": "akanotanin",
-  "url": "https://github.com/akanotanin/monitor-theme-kanso",
-  "config": [
-    {
-      "type": "title",
-      "label": "节点信息"
-    },
-    {
-      "type": "boolean",
-      "key": "detailRemarks",
-      "label": "详情页显示备注",
-      "default": true,
-      "help": "备注在后台节点里填（公开给访客、私有给自己）；这一档只影响整页详情那一行小卡片（列表卡片的底注行固定最多 3 枚）。"
-    },
-    {
-      "type": "title",
-      "label": "外观"
-    },
-    {
-      "type": "select",
-      "key": "themeMode",
-      "label": "主题模式",
-      "default": "system",
-      "options": [
-        {
-          "value": "system",
-          "label": "随系统设置"
-        },
-        {
-          "value": "auto",
-          "label": "随北京时间自动切换"
-        },
-        {
-          "value": "light",
-          "label": "亮色"
-        },
-        {
-          "value": "dark",
-          "label": "暗色"
-        }
-      ],
-      "help": "站点明暗；按北京时间自动那档＝19:00–07:00 用暗色（访客可自行覆盖）。"
-    }
-  ]
+  "url": "https://github.com/akanotanin/monitor-theme-kanso"
 }

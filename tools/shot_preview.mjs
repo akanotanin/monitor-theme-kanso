@@ -24,11 +24,10 @@ const OUT = process.argv[3] || 'preview.png'
 const W = Number(process.argv[4] || 1440)
 const H = Number(process.argv[5] || 810)
 const DPR = Number(process.argv[6] || 2)
-// 可选（第 7 个参数）：叠一组键值（JSON 字面量）再截：站点配置原样取回来、只改这几个键，
-// 线上配置一个字都不动、也不会让访客看到跳变。
-//   node tools/shot_preview.mjs <站点> shots/x.png 1440 900 2 '{"themeMode":"dark"}'
-const SHORT = 'kanso'
-const EXTRA = process.argv[7] ? JSON.parse(process.argv[7]) : {}
+// 可选（第 7 个参数）：传 `dark` 时按**系统暗色**（prefers-color-scheme: dark）拍一张 ——
+// 1.6.0 起主题没有设置项，页面默认跟着系统走，这就是深色版的拍法。
+//   node tools/shot_preview.mjs <站点> shots/x.png 1440 900 2 dark
+const DARK = process.argv[7] === 'dark' 
 const PORT = 9700 + Math.floor(Math.random() * 200)
 const CHROME = [
   'C:/Program Files/Google/Chrome/Application/chrome.exe',
@@ -60,27 +59,8 @@ for (let i = 0; i < 80 && !wsUrl; i++) {
 if (!wsUrl) throw new Error('Chrome 没起来')
 const ws = new WebSocket(wsUrl)
 await new Promise((r) => { ws.onopen = r })
-// 覆写主题配置时的计数：拍完要断言「这条机制真的发生过」，否则可能是压根没生效却看着像成功。
-const overridden = []
-let SERVED_CONFIG = null
 ws.onmessage = (e) => {
   const m = JSON.parse(e.data)
-  if (m.method === 'Fetch.requestPaused') {
-    const url = m.params.request.url
-    ws.send(JSON.stringify({
-      id: ++id, method: 'Fetch.fulfillRequest',
-      params: {
-        requestId: m.params.requestId, responseCode: 200,
-        responseHeaders: [
-          { name: 'Content-Type', value: 'application/json' },
-          { name: 'Cache-Control', value: 'no-store' },
-        ],
-        body: Buffer.from(SERVED_CONFIG, 'utf8').toString('base64'),
-      },
-    }))
-    overridden.push(url)
-    return
-  }
   if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id) }
 }
 const send = (method, params = {}) => new Promise((res) => { const i = ++id; pending.set(i, res); ws.send(JSON.stringify({ id: i, method, params })) })
@@ -89,16 +69,7 @@ const evalJS = async (expr) => (await send('Runtime.evaluate', { expression: exp
 await send('Runtime.enable')
 await send('Page.enable')
 await send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: DPR, mobile: false })
-await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] })
-
-// 要钉档位 / 叠设置项时：先把线上配置取回来（只改那几个键），再把这条请求交给 Fetch 域就地答复。
-const OVERRIDE = { ...EXTRA }
-if (Object.keys(OVERRIDE).length) {
-  const live = await (await fetch(`${BASE}/api/themes/${SHORT}/config`)).json()
-  SERVED_CONFIG = JSON.stringify({ ...live, ...OVERRIDE })
-  await send('Fetch.enable', { patterns: [{ urlPattern: `*api/themes/${SHORT}/config*`, requestStage: 'Request' }] })
-  console.log(`就地覆写 ${JSON.stringify(OVERRIDE)}（其余键原样取自线上：${Object.keys(live).join(" / ")}）；线上配置未改动`)
-}
+await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: DARK ? 'dark' : 'light' }] })
 
 await send('Page.navigate', { url: BASE + '/' })
 
@@ -149,12 +120,6 @@ const geometry = JSON.parse(await evalJS(`JSON.stringify((() => {
     farmEntry: !!document.querySelector('a[title="农场入口"]'),
   }
 })())`))
-
-// 覆写过配置时，必须在按快门前确认那条覆写真的发生过（否则拍到的是线上原本那一档/原本的开关）。
-if (Object.keys(OVERRIDE).length && overridden.length === 0) {
-  throw new Error(`覆写了 ${JSON.stringify(OVERRIDE)}，但主题配置那条请求一次都没被拦到——这张图不是你要的样子，别用`)
-}
-if (Object.keys(OVERRIDE).length) console.log(`主题配置请求已就地覆写 ${overridden.length} 次：${overridden.map((u) => u.replace(BASE, '')).join(', ')}`)
 
 const png = await send('Page.captureScreenshot', { format: 'png' })
 await writeFile(OUT, Buffer.from(png.result.data, 'base64'))

@@ -1,9 +1,8 @@
-// 本地静态伺服 dist/ + 桩掉 /api/*：不依赖任何远端 hub 也能验主题的渲染与设置项。
+// 本地静态伺服 dist/ + 桩掉 /api/*：不依赖任何远端 hub 也能验主题的渲染。
 //
-// 用法：node tools/serve.mjs [端口=5199] [config JSON 文件] [nodes JSON 文件] [上游 hub]
-//   node tools/serve.mjs 5199 '{"listTop":"groups","cardStyle":"compact"}'
-//   node tools/serve.mjs 5199 cfg.json ../fake_nodes.json
-//   node tools/serve.mjs 5199 '' '' http://127.0.0.1:28081     # /api/* 转给真 hub（经隧道），静态仍走本机
+// 用法：node tools/serve.mjs [端口=5199] [nodes JSON 文件] [上游 hub]
+//   node tools/serve.mjs 5199 ../fake_nodes.json
+//   node tools/serve.mjs 5199 '' http://127.0.0.1:28081     # /api/* 转给真 hub（经隧道），静态仍走本机
 //
 // 为什么要有「上游 hub」这一档：桩数据只有节点列表，历史指标全是空对象，图表相关的断言
 // （例如延迟页签 7 天窗口）在桩上跑不出结论。把 /api/* 转给真 hub，静态文件仍走本机，
@@ -17,13 +16,12 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { extname, join, normalize } from 'node:path'
 
 const PORT = Number(process.argv[2] || 5199)
-const UPSTREAM = (process.argv[5] || '').replace(/\/$/, '')
+const UPSTREAM = (process.argv[4] || '').replace(/\/$/, '')
 const asJson = (arg) => {
   if (!arg) return null
   return existsSync(arg) ? JSON.parse(readFileSync(arg, 'utf8')) : JSON.parse(arg)
 }
-const CONFIG = asJson(process.argv[3]) ?? {}
-const NODES = asJson(process.argv[4]) ?? { nodes: [] }
+const NODES = asJson(process.argv[3]) ?? { nodes: [] }
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css',
@@ -48,7 +46,6 @@ createServer((req, res) => {
     const body =
       path === '/api/me' ? { authed: false, github: false, public_page: true, site: `http://127.0.0.1:${PORT}`, site_name: 'kanso 本地' } :
       path === '/api/nodes' ? NODES :
-      path.endsWith('/config') ? CONFIG :
       path === '/api/version' ? { version: '1.3.0' } : {}
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
     return res.end(JSON.stringify(body))
@@ -62,4 +59,4 @@ createServer((req, res) => {
   }
   res.writeHead(200, { 'Content-Type': TYPES[extname(full)] ?? 'application/octet-stream', 'Cache-Control': 'no-store' })
   res.end(readFileSync(full))
-}).listen(PORT, '127.0.0.1', () => console.log(`dist/ 已伺服在 http://127.0.0.1:${PORT}/  config=${JSON.stringify(CONFIG)}${UPSTREAM ? `  /api/* → ${UPSTREAM}` : '  （/api/* 用桩数据）'}`))
+}).listen(PORT, '127.0.0.1', () => console.log(`dist/ 已伺服在 http://127.0.0.1:${PORT}/${UPSTREAM ? `  /api/* → ${UPSTREAM}` : '  （/api/* 用桩数据）'}`))

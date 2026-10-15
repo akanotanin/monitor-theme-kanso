@@ -6,10 +6,8 @@ import { SearchBox, SearchRow } from "@/components/SearchBox"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api, useNodes, type Node } from "@/lib/api"
-import { hasDetailRemarks } from "@/lib/notes"
 import { searchNodes } from "@/lib/search"
-import { useLocalFarm, useThemeConfig } from "@/lib/theme-config"
-import { isBeijingNight, resolveDark, type ThemeMode } from "@/lib/site-settings"
+import { useLocalFarm } from "@/lib/farm-entry"
 import { FarmIcon } from "@/components/FarmIcon"
 
 type Me = {
@@ -38,7 +36,7 @@ const loadDetail = () => import("@/components/NodeDetail").then((m) => ({ defaul
 const NodeDetail = lazy(loadDetail)
 
 /**
- * 详情页的骨架：按详情页真实的那几块摆（标题行 + 规格格 + 备注块 + 页签行 + 四张图），
+ * 详情页的骨架：按详情页真实的那几块摆（标题行 + 规格格 + 页签行 + 四张图），
  * 不是一枚 `h-96`。它露面的场景只有一个 —— 点开时图表 chunk 还没到（见下面 warmDetail），
  * 所以它的高度必须跟加载完的内容一样，否则那一下会「先塌再撑」。
  *
@@ -46,17 +44,17 @@ const NodeDetail = lazy(loadDetail)
  * 页签 py-1 + text-xs = 24、图块 = 小标题 mb-2 + `h-40`、四张图之间 space-y-5、
  * 规格格那层用同一套 grid 断点。于是手机上（一列）与桌面上（三列）都自动对上。
  *
- * ★三处「差一块就差几十 px」的地方（都踩过，护栏 verify_detail_preload 会照出来）：
- *   ① **备注块**（22px）—— 真实页里那台机器有备注才占位，所以这里得按 `hasRemarks` 判一次，
- *      不能无条件画（没备注的机器会反过来高出 38px）；（2026-10-06 修）
- *   ② **四张图是页签块的兄弟、不是孩子** —— 嵌进去的话，页签与图之间那 16px 变成 8px，
- *      整页少 8px。①+② = 22+16+8 = 46px，正是当年那 46px 的差额；（2026-10-06 修）
- *   ③ **TCP / UDP 连接那一格**（2026-10-15 修）—— 详情页 2026-10-14 加了连接数、2026-10-15
+ * ★两处「差一块就差几十 px」的地方（都踩过，护栏 verify_detail_preload 会照出来）：
+ *   ① **四张图是页签块的兄弟、不是孩子** —— 嵌进去的话，页签与图之间那 16px 变成 8px，
+ *      整页少 8px；（2026-10-06 修）
+ *   ② **TCP / UDP 连接那一格**（2026-10-15 修）—— 详情页 2026-10-14 加了连接数、2026-10-15
  *      合成一格（真实页 7 格），骨架还画 6 格：桌面三列多出一行（+48px）、手机一列多出两行（+96px）。
  *      判法与真实页同源（那边 `const m = node.metrics`）：`metrics` 在才画这一格（离线机器它隐身、
- *      真实页也是 6 格），所以由调用方按 `node.metrics` 传入，照 ① 的同一手法。
+ *      真实页也是 6 格），所以由调用方按 `node.metrics` 传入。
+ *
+ * （2026-10-16：详情页删了备注块——备注只显示在卡片上——骨架里那一块也一并撤掉。）
  */
-function DetailSkeleton({ hasRemarks = false, hasConnections = false }: { hasRemarks?: boolean; hasConnections?: boolean }) {
+function DetailSkeleton({ hasConnections = false }: { hasConnections?: boolean }) {
   return (
     <div className="space-y-4" aria-busy="true">
       <div className="flex items-center gap-2">
@@ -71,14 +69,7 @@ function DetailSkeleton({ hasRemarks = false, hasConnections = false }: { hasRem
           </div>
         ))}
       </div>
-      {/* 备注那一块：真实页里是 `flex flex-wrap items-center gap-1` 的一行小卡片（整行 22px），
-          没写备注时一个像素都不占 —— 所以这里也按同一条件决定画不画（判据见 @/lib/notes）。 */}
-      {hasRemarks && (
-        <div className="flex min-w-0 flex-wrap items-center gap-1">
-          <Skeleton className="h-[22px] w-24 rounded-full" />
-          <Skeleton className="h-[22px] w-16 rounded-full" />
-        </div>
-      )}
+
       <div className="space-y-2 border-t pt-4">
         <div className="flex gap-1">
           <Skeleton className="h-6 w-12" />
@@ -180,10 +171,10 @@ const readSystemDark = () => DARK_MEDIA.matches
  * landing between the first render and the effect that would have attached the
  * listener is otherwise never heard, and the next one is a day away.
  */
-function useTheme(siteMode: ThemeMode) {
+function useTheme() {
   // ★ 必须接住异常：浏览器禁用站点数据时，连 `localStorage` 的**读取**都会抛 SecurityError ——
   //   在 `useState` 初始化器里抛 = 首次渲染炸掉、整页空白（hub 1.4.1 release note 点名的那条，
-  //   官方两个主题在随附新版里修的就是它）。读不到就当「没存过」，下面照常走站长那一档。
+  //   官方两个主题在随附新版里修的就是它）。读不到就当「没存过」，照常跟系统。
   const [saved, setSaved] = useState(() => {
     try {
       return localStorage.getItem("theme")
@@ -192,33 +183,17 @@ function useTheme(siteMode: ThemeMode) {
     }
   })
   const system = useSyncExternalStore(subscribeSystemDark, readSystemDark)
-  // siteMode 变档时马上按新档校正一次「夜里没夜里」——不等下一分钟。
-  // 写法用「渲染期调节 state」而不是在 effect 里同步 setState（后者要多一轮级联渲染，
-  // oxlint 也点名这一条）；模式这一档运行时几乎不变，代价最多是一次立即重放。
-  const [night, setNight] = useState(() => isBeijingNight())
-  const [nightMode, setNightMode] = useState(siteMode)
-  if (nightMode !== siteMode) {
-    setNightMode(siteMode)
-    setNight(isBeijingNight())
-  }
-  // 「随北京时间自动」要自己跨过 19:00 / 07:00：每分钟问一次现在几点（几乎不要钱），
-  // 到点前后最多差一分钟。别的档不挂这个定时器。
-  useEffect(() => {
-    if (siteMode !== "auto") return
-    const timer = setInterval(() => setNight(isBeijingNight()), 60_000)
-    return () => clearInterval(timer)
-  }, [siteMode])
-  // 站长那一档是**默认**；访客点过那枚图标（localStorage 里有 `theme`）就以他的为准。
-  const fromSite = siteMode === "auto" ? night : resolveDark(siteMode, system)
-  const dark = saved ? saved === "dark" : fromSite
+  // 默认跟访客的系统走；访客点过那枚图标（localStorage 里有 `theme`）就以他的为准。
+  // （1.6.0 起没有任何站点设置项，这里已经没有「站长那一档」可读。）
+  const dark = saved ? saved === "dark" : system
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark)
     /**
      * 手机浏览器那一圈（地址栏 / 状态栏）的配色（`theme-color`）跟着**页面实际用的**明暗走。
      *
-     * index.html 里那两份是静态值、按**系统**明暗挑的；而本站的「随北京时间自动」在夜里
-     * 与系统相反时两边会打架 —— 所以这里先把那两份摘掉，再挂一份没有 media 的。
+     * index.html 里那两份是静态值、按**系统**明暗挑的；访客用顶栏那枚图标覆盖过之后，
+     * 页面明暗可能与系统相反，两边就会打架 —— 所以这里先把那两份摘掉，再挂一份没有 media 的。
      * 颜色取 `--background` 的**实际值**（oklch 交给 canvas 读回 sRGB），不手抄 hex，免得跟 token 漂移。
      */
     const head = document.head
@@ -245,8 +220,8 @@ function useTheme(siteMode: ThemeMode) {
     dark,
     () => {
       const next = dark ? "light" : "dark"
-      // 点成与站长那一档一致时**删掉记录**（= 重新跟着站长走，与访客偏好同一套口径）。
-      const record = (next === "dark") === fromSite ? null : next
+      // 点成与系统当前一致时**删掉记录**（= 重新跟着系统走，与访客偏好同一套口径）。
+      const record = (next === "dark") === system ? null : next
       try {
         if (record === null) localStorage.removeItem("theme")
         else localStorage.setItem("theme", record)
@@ -259,9 +234,8 @@ function useTheme(siteMode: ThemeMode) {
 }
 
 export default function App() {
-  const config = useThemeConfig()
-  // 明暗：站长那一档（`themeMode`）当默认，访客点过顶栏那枚图标就以他的为准。
-  const [dark, toggleTheme] = useTheme(config.themeMode)
+  // 明暗：默认跟访客的系统走，访客点过顶栏那枚图标就以他记下的为准（1.6.0 起没有设置项）。
+  const [dark, toggleTheme] = useTheme()
   // 顶栏那枚入口图标（1.25.0 起没有设置项）：挂载即探一次本站约定的 `/chicken/`，
   // 装了那座小鸡农场才出现、没装不占位（判据是内容而不是状态码，见 useLocalFarm）。
   const farmUrl = useLocalFarm()
@@ -547,9 +521,9 @@ export default function App() {
           !nodes ? (
             <DetailSkeleton />
           ) : selected ? (
-            <Suspense fallback={<DetailSkeleton hasRemarks={hasDetailRemarks(selected, config.detailRemarks)} hasConnections={!!selected.metrics} />}>
+            <Suspense fallback={<DetailSkeleton hasConnections={!!selected.metrics} />}>
               {/* 整页详情：保留天数要一起给它（时间范围那排按钮按它生成）。 */}
-              <NodeDetail node={selected} historyDays={me.history_days} detailRemarks={config.detailRemarks} />
+              <NodeDetail node={selected} historyDays={me.history_days} />
             </Suspense>
           ) : (
             <p className="py-16 text-center text-sm text-muted-foreground">

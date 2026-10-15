@@ -15,7 +15,7 @@ const NODE_ID = process.argv[3] || ''
 if (!UPSTREAM) { console.error('用法：node tools/pre_deploy_check.mjs <上游 hub 地址> [节点id]'); process.exit(2) }
 
 const PORT = 5300 + Math.floor(Math.random() * 300)
-const server = spawn('node', ['tools/serve.mjs', String(PORT), '{}', '', UPSTREAM], { stdio: ['ignore', 'pipe', 'pipe'] })
+const server = spawn('node', ['tools/serve.mjs', String(PORT), '', UPSTREAM], { stdio: ['ignore', 'pipe', 'pipe'] })
 let serverLog = ''
 server.stdout.on('data', (d) => { serverLog += d })
 server.stderr.on('data', (d) => { serverLog += d })

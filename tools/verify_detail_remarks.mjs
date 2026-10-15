@@ -1,10 +1,8 @@
-// 详情页备注的验收（站点设置 → 节点信息 → 「详情页显示备注」）：
-//   · detailRemarks=true：有备注的机器点进详情，那一行小卡片出来（公开备注拆枚、正字面）
-//   · detailRemarks=false：整块不渲染（不占位）
-//   · 没写备注的机器：两种设置下都不占位
-//   · ★ 卡片那一侧摊的是**同一份**备注，但摊在底注那一行、最多 3 枚（2026-10-15 卡片改版后
-//     的口径；从前是「一处都不摊」）：有备注的机器卡片上就能看到那几枚，没写的没有。
-//   · 老 hub（没有 `public_remark` 这个 key）：按「这台没写备注」处理，不占位
+// 备注显示口径的验收（1.6.0 起：**备注只显示在卡片上**，详情页不再摊、也没有任何设置开关）：
+//   · 详情页：三台机器都不许出现备注块（`[data-remark-block]` 锚点已随代码退休）与备注文本
+//   · 卡片底注那一行：有备注的机器摊出来（公开备注拆枚、最多 3 枚）；没写的机器一枚都不摊
+//   · 卡片上不许出现「详情页那一块」的痕迹（两种锚点不许混）
+//   · 老 hub（没有 `public_remark` 这个 key）：按「这台没写备注」处理
 //
 // 匿名视图只下发**公开备注**（私有备注仅登录管理员可见、hub 侧决定，这里不模拟登录态），
 //   所以本项目验的是公开备注那一路；私有那几手的拆分逻辑在 notes.test.ts 里由单测守住。
@@ -35,7 +33,6 @@ const NODES = {
     node(3, '老Hub机', {}),   // 没有 public_remark 这个 key
   ],
 }
-let CONFIG = { detailRemarks: true }
 
 const serveFile = (res, path) => {
   const file = join('dist', normalize(path === '/' ? '/index.html' : path).replace(/^(\.\.[/\\])+/, ''))
@@ -51,8 +48,7 @@ const server = createServer((req, res) => {
   if (path.startsWith('/api/')) {
     const body = path === '/api/me' ? { authed: false, github: false, public_page: true, site: `http://127.0.0.1:${PORT}`, site_name: '备注验收', history_days: 30 }
       : path === '/api/nodes' ? NODES
-        : path.endsWith('/config') ? CONFIG
-          : path.includes('/metrics') ? { metrics: [], probes: [], loss: {} } : {}
+        : path.includes('/metrics') ? { metrics: [], probes: [], loss: {} } : {}
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
     return res.end(JSON.stringify(body))
   }
@@ -94,59 +90,46 @@ const goto = async (path) => {
   for (let i = 0; i < 60; i++) { await sleep(250); if (await js("!!document.querySelector('header')")) break }
   await sleep(900)
 }
+// 详情页探测：① 老锚点在不在（一个都不该有——1.6.0 起备注不在详情页）② 备注文本在不在正文里。
+const REMARK_WORDS = ['MANAGED', '直连优化']
 const detail = async (nid) => {
   await goto(`/node/${nid}`)
   return JSON.parse(await js(`JSON.stringify({
-    block: (() => { const el = document.querySelector('[data-remark-block]'); if (!el) return null
-      return { text: el.innerText.replace(/\\s+/g, ' ').trim(), h: Math.round(el.getBoundingClientRect().height) } })(),
-    chips: [...document.querySelectorAll('[data-remark-block] [data-slot="badge"]')].map((el) => el.innerText.trim()),
+    blockEls: document.querySelectorAll('[data-remark-block]').length,
+    mentions: ${JSON.stringify(REMARK_WORDS)}.filter((w) => (document.querySelector('main')?.innerText || '').includes(w)),
   })`))
 }
 const listChips = async () => {
   await goto('/')
   return JSON.parse(await js(`JSON.stringify({
     cards: [...document.querySelectorAll('[data-node-card]')].map((el) => el.innerText),
-    // 卡片这一侧的备注小卡片挂在底注那一行（锚点 data-remark="card"）；整页详情那一块用的是
-    // data-remark-block —— 两者不许混：卡片上出现「详情页那一块」就是版式串了。
+    // 卡片这一侧的备注小卡片挂在底注那一行（锚点 data-remark="card"）；整页详情那一块用的
+    // data-remark-block 已经随代码退休 —— 卡片上出现它就是版式串了。
     chips: [...document.querySelectorAll('[data-node-card]')].map((el) =>
       [...el.querySelectorAll('[data-remark="card"] [data-slot="badge"]')].map((b) => b.innerText.trim())),
     detailBlocks: document.querySelectorAll('[data-node-card] [data-remark-block]').length,
   })`))
 }
 
-console.log('\n详情页备注（夹具：有备注机＝「MANAGED, 直连优化」两枚；干净机 / 老Hub机没有）:')
+console.log('\n备注显示口径（1.6.0：只显示在卡片上）—— 夹具：有备注机＝「MANAGED, 直连优化」两枚；干净机 / 老Hub机没有：')
 
-// ① 开着：有备注的机器 → 两枚、正字面；干净机与老 Hub 机 → 不占位
-CONFIG = { detailRemarks: true }
-let m = await detail(1)
-check('① detailRemarks=true：详情页那行小卡片渲染出来了', !!m.block, JSON.stringify(m))
-check('① 备注拆成两枚：MANAGED / 直连优化', m.chips.length === 2 && m.chips[0] === 'MANAGED' && m.chips[1] === '直连优化', JSON.stringify(m.chips))
-m = await detail(2)
-check('① 没写备注的机器（public_remark 空串）：整块不占位', m.block === null, JSON.stringify(m.block))
-m = await detail(3)
-check('① 老 hub（没有 public_remark 这个 key）：按没写处理，不占位', m.block === null, JSON.stringify(m.block))
+// ① 三台机器的详情页都不摊备注（老锚点退休 + 备注文本一个都不出现）
+for (const [nid, name] of [[1, '有备注机'], [2, '干净机'], [3, '老Hub机']]) {
+  const m = await detail(nid)
+  check(`① ${name}：详情页没有备注块（[data-remark-block] 已随代码退休）`, m.blockEls === 0, `锚点 ${m.blockEls} 个`)
+  check(`① ${name}：详情页正文里没有任何备注文本`, m.mentions.length === 0, JSON.stringify(m.mentions))
+}
 
-// ② 关着：有备注的机器也不渲染（不占位）
-CONFIG = { detailRemarks: false }
-m = await detail(1)
-check('② detailRemarks=false：有备注也不渲染（不占位）', m.block === null, JSON.stringify(m.block))
-
-// ③ 卡片那一侧的备注（2026-10-15 起摊在底注那一行、最多 3 枚；与「一处都不摊」的旧口径不同）
-CONFIG = { detailRemarks: true }
+// ② 卡片底注那一行：有备注的机器摊出来（最多 3 枚）；没写的机器一枚都不摊
 const lt = await listChips()
 const cardChips = (name) => lt.chips[lt.cards.findIndex((t) => t.includes(name))] ?? null
-check('③ 卡片底注那一行：有备注的机器摊出那两枚（MANAGED / 直连优化）',
+check('② 卡片底注那一行：有备注的机器摊出那两枚（MANAGED / 直连优化）',
   JSON.stringify(cardChips('有备注机')) === JSON.stringify(['MANAGED', '直连优化']), JSON.stringify(lt.chips))
-check('③ 卡片底注那一行：没写备注的两台一枚都不摊',
+check('② 卡片底注那一行：没写备注的两台一枚都不摊',
   JSON.stringify(cardChips('干净机')) === '[]' && JSON.stringify(cardChips('老Hub机')) === '[]',
   JSON.stringify(lt.chips))
-check('③ 卡片上不许出现「整页详情那一块」（锚点是 data-remark="card"，不是 data-remark-block）',
+check('② 卡片上不许出现「详情页那一块」的锚点（数据源是 data-remark="card"）',
   lt.detailBlocks === 0, `${lt.detailBlocks} 块`)
-check('③ 卡片这一侧的备注不受「详情页显示备注」开关影响（关掉详情页那一块也照摊）', (await (async () => {
-  CONFIG = { detailRemarks: false }
-  const off = await listChips()
-  return JSON.stringify(off.chips) === JSON.stringify(lt.chips)
-})()) === true)
 
 check('没有控制台异常', errors.length === 0, errors.slice(0, 2).join(' | '))
 

@@ -21,7 +21,7 @@ const ONLY = process.argv[4] || ''
 if (!UPSTREAM) { console.error('用法：node tools/verify_detail_preload.mjs <上游 hub 地址> [节点id] [只跑哪个用例:1|2|3]'); process.exit(2) }
 
 const PORT = 5310 + Math.floor(Math.random() * 200)
-const server = spawn('node', ['tools/serve.mjs', String(PORT), '{}', '', UPSTREAM], { stdio: ['ignore', 'pipe', 'pipe'] })
+const server = spawn('node', ['tools/serve.mjs', String(PORT), '', UPSTREAM], { stdio: ['ignore', 'pipe', 'pipe'] })
 let serverLog = ''
 server.stdout.on('data', (d) => { serverLog += d })
 server.stderr.on('data', (d) => { serverLog += d })

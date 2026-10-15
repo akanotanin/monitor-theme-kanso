@@ -71,7 +71,6 @@ const server = createServer((req, res) => {
     let body = {}
     if (path === '/api/me') body = { authed: false, github: false, public_page: true, site: `http://127.0.0.1:${PORT}`, site_name: '可见性校验', history_days: 30 }
     else if (path === '/api/nodes') { nodesHits++; body = { nodes: [mkNode('快照')] } }
-    else if (path.endsWith('/config')) body = {}
     else if (path.includes('/metrics')) body = { metrics: [], ping: [], probes: {}, loss: {} }
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
     return res.end(JSON.stringify(body))

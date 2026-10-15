@@ -1,40 +1,18 @@
-// theme.json 的 config 默认值，必须与 src/lib/site-settings.ts 的 DEFAULTS 逐项一致。
+// theme.json 不许再声明任何设置项（1.6.0 起「主题设置」整个下掉）。
 //
-// 这两处是同一个开关的两半：面板按 theme.json 现画表单，页面按 DEFAULTS 兜底。
-// 只改一处就是那种「后台显示开着、页面还是旧样子」的毛病，而且两边都不报错。
+// hub 只给**声明了 config 的**主题画后台那枚「主题设置」按钮，所以「config 为空 / 不存在」
+// 就是「不提供主题设置」的判据。在这里断死它：将来有人顺手加一格时当场报错 —— 否则面板上
+// 会多出一格没人读的开关（主题侧已经没有读任何配置的代码），又是那种两边都不报错的毛病。
 //
 // 用法：node scripts/check-config.mjs（npm run check，打包脚本与 CI 都会调）
 import { existsSync, readFileSync } from 'node:fs'
 
 const manifest = JSON.parse(readFileSync('theme.json', 'utf8'))
-const fields = (manifest.config || []).filter((entry) => entry.type !== 'title' && entry.key)
-if (!fields.length) throw new Error('theme.json 的 config 里没有任何设置项')
-
-const source = readFileSync('src/lib/site-settings.ts', 'utf8')
-const block = source.match(/export const DEFAULTS[^=]*=\s*\{([\s\S]*?)\n\}/)
-if (!block) throw new Error('src/lib/site-settings.ts 里找不到 DEFAULTS')
-const declared = {}
-for (const line of block[1].split('\n')) {
-  const m = line.match(/^\s*([A-Za-z_$][\w$]*)\s*:\s*(.+?),?\s*$/)
-  if (m) declared[m[1]] = m[2].replace(/,$/, '').trim()
+if (Array.isArray(manifest.config) && manifest.config.length) {
+  const names = manifest.config.map((entry) => entry.key || entry.label).join('、')
+  throw new Error(`theme.json 里声明了 ${manifest.config.length} 个设置项（${names}）——本主题不提供主题设置，config 必须为空`)
 }
-
-const problems = []
-for (const field of fields) {
-  if (!(field.key in declared)) {
-    problems.push(`${field.key}: theme.json 有、DEFAULTS 里没有`)
-    continue
-  }
-  // 去掉引号后照字面比：布尔、数字、字符串三种默认值都够用，不做求值。
-  const code = declared[field.key].replace(/^["'`]|["'`]$/g, '').trim()
-  const json = String(field.default).trim()
-  if (code !== json) problems.push(`${field.key}: theme.json 是 ${json}、DEFAULTS 是 ${code}`)
-}
-for (const key of Object.keys(declared)) {
-  if (!fields.some((f) => f.key === key)) problems.push(`${key}: DEFAULTS 有、theme.json 里没有`)
-}
-if (problems.length) throw new Error(`设置项默认值两边不一致：\n  ${problems.join('\n  ')}`)
-console.log(`设置项默认值一致：${fields.map((f) => `${f.key}=${f.default}`).join('、')}`)
+console.log('theme.json 没有声明任何设置项（不提供主题设置）')
 
 // 站名那个缓存键散在三处（App 一处、早跑脚本一处、index.html 的内联脚本一处）——它们必须逐字
 // 一致。不一致的症状很阴：缓存有人写、没人读（或反过来），页面照常、后台照常，只是刷新时先闪

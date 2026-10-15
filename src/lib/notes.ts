@@ -1,7 +1,7 @@
 /**
- * 节点备注：hub 后台按节点填的两个字段，随 `/api/nodes` 一起下发；**合并成一份**后两处都摊
- * （私有在前、公有在后，见 `remarkChips`）——卡片那一侧的底注行最多摊 3 枚（见 NodeCard 的
- * CARD_CHIPS），整页详情那一侧由主题设置 `detailRemarks` 控制。
+ * 节点备注：hub 后台按节点填的两个字段，随 `/api/nodes` 一起下发；**合并成一份**后摊在卡片
+ * 底注那一行（私有在前、公有在后，见 `remarkChips`）——最多 3 枚（见 NodeCard 的 CARD_CHIPS）。
+ * 1.6.0 起备注**只显示在卡片上**：整页详情不再摊备注，也没有任何设置开关。
  *
  *   · **公开备注**（`public_remark`）——站长写给访客的一行说明（hub 1.3.2 起）：单行、≤100 字、
  *     留空就是没写；hub 存的时候就 trim 过，换行与控制字符直接拒收，所以这边拿到的一定是一行
@@ -49,31 +49,15 @@ export function ownTags(node: { remark?: string | null }): string[] {
 export type RemarkChip = { text: string; own: boolean }
 
 /**
- * 卡片与详情页共用的那一份备注：**私有在前、公有在后**，都拆成一枚枚小卡片。
+ * 卡片底注那一行用的那一份备注：**私有在前、公有在后**，都拆成一枚枚小卡片。
  *
  * 合并的好处是「一处写、处处看得到」：站长给自己标的那些（私有）与写给访客的那些（公开）排在同
- * 一处，列表与详情页用的是同一套版式。而 hub 只把私有备注下发给**登录的管理员**，所以同一个函数
- * 在访客那边拿到的就只有公有那几枚——不需要两套分支，也不会漏泄。
+ * 一处。而 hub 只把私有备注下发给**登录的管理员**，所以同一个函数在访客那边拿到的就只有公有
+ * 那几枚——不需要两套分支，也不会漏泄。
  *
- * 两个字段都没有（或只有空白）→ 空数组，页面上一个像素都不占。
+ * 两个字段都没有（或只有空白）→ 空数组，卡片上不摊任何小卡片
+ * （1.6.0 起备注只显示在卡片上；详情页那一块已经不存在了）。
  */
-/**
- * 整页详情那一块会不会占位：**这台机器有备注** 且 站长开着「详情页备注」（`detailRemarks`）。
- *
- * 两处共用它，免得各写一遍、改一处漏一处：
- *   · `NodeDetail` 决定画不画那一行小卡片；
- *   · `DetailSkeleton`（`src/App.tsx`）决定骨架里给不给它留位 —— 那一块 22px ＋ 上下 16px 间距，
- *     骨架漏了它整页就少 38px，点开时会「先塌再撑」。
- *
- * 相对路径 import 是照 `src/lib` 里的惯例：单测用 Node 直接跑，认不了 `@/` 这个别名
- * （见 notes.test.ts 顶上的跑法说明）。
- */
-export function hasDetailRemarks(
-  node: { public_remark?: string | null; remark?: string | null },
-  on: boolean,
-): boolean {
-  return on && remarkChips(node).length > 0
-}
 
 export function remarkChips(node: { public_remark?: string | null; remark?: string | null }): RemarkChip[] {
   const own = ownTags(node).map((text) => ({ text, own: true }))

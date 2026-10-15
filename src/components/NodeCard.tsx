@@ -138,27 +138,24 @@ export function Country({ node }: { node: Node }) {
 }
 
 /**
- * 备注小卡片：**私有那几枚带锁 + 描边**（仅自己可见），公有那几枚实心 `secondary`。
- * 整页详情那一块（见 NodeDetail）用它摊「私有 + 公有」合并后的那一串；次序（私有在前、
+ * 备注小卡片：**私有那几枚带锁 + 描边**（仅自己可见），公有那几枚实心 `secondary`
+ * （1.6.0 起备注只显示在卡片上，整页详情那一块已撤）。
+ * 卡片底注那一行摊「私有 + 公有」合并后的那一串（最多 CARD_CHIPS 枚）；次序（私有在前、
  * 公有在后）由 `@/lib/notes` 的 `remarkChips` 一处决定。
- *
- * ★卡片那一侧一处都不摊备注——「简约」这一档的口径（2026-10-03 站长定的），
- * 所以这个组件现在只被整页详情使用。
  */
-export function RemarkChips({ chips, compact = false }: { chips: RemarkChip[]; compact?: boolean }) {
+export function RemarkChips({ chips }: { chips: RemarkChip[] }) {
   return (
     <>
       {chips.map((c, i) => (
         <Badge
           key={i + "-" + c.text}
           variant={c.own ? "outline" : "secondary"}
-          // `compact`：卡片那一侧用（11px 字 + 行盒 14px + 无内边距 = 16px 高，正好塞满底注那行）；
-          // 整页详情照旧用默认档（那边一行摊一条、不差这几像素）。2026-10-15 站长要求
-          // 「备注缩小一些、且不改变卡片大小」。
+          // 卡片底注那一行的口径（11px 字 + 行盒 14px + 无内边距 = 16px 高，正好塞满底注那行；
+          // 2026-10-15 站长要求「备注缩小一些、且不改变卡片大小」）。
           // ★行盒给到 14px（leading-3.5）而不是 11px：11px 的行盒会把中文字形上下各裁掉半像素
           //   （Inter 11px 的字体框 ascent+descent ≈ 13.3px）；py 用 [0px] 这种任意值压掉基类的
           //   py-0.5（Tailwind 把任意值排在后面，可靠）。两者一凑，高度还是 16px。
-          className={"min-w-0 shrink font-normal " + (c.own ? "gap-1 text-muted-foreground " : "") + (compact ? "px-1.5 py-[0px] text-[11px] leading-3.5" : "")}
+          className={"min-w-0 shrink font-normal " + (c.own ? "gap-1 text-muted-foreground " : "") + "px-1.5 py-[0px] text-[11px] leading-3.5"}
           title={c.own ? "仅自己可见：" + c.text : c.text}
         >
           {/* 锁图标尺寸交给 Badge 基类的 `[&>svg]:size-3`（0,1,1）—— 挂在图标上的 size-2.5
@@ -342,7 +339,7 @@ export function NodeCard({ node, onOpen, onWarm, terms, selected }: {
           <div className="mt-1.5 flex h-4 min-w-0 items-center justify-between gap-2">
             <span className="tnum min-w-0 truncate text-[11px] leading-4 text-muted-foreground">{note}</span>
             <span data-remark="card" className="flex min-w-0 shrink items-center justify-end gap-1">
-              <RemarkChips chips={chips} compact />
+              <RemarkChips chips={chips} />
             </span>
           </div>
         </>

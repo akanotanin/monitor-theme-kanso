@@ -39,7 +39,6 @@ const node = (id, name, group, country, os) => ({
   metrics: { cpu: 3, load: [0, 0, 0], mem_used: 431800320, mem_total: 1020526592, swap_used: 0, swap_total: 0, disk_used: 1524510720, disk_total: 10485864448, net_rx: 867, net_tx: 465, procs: 75, tcp: 16, udp: 3, uptime: 318521, month_rx: 4650258264, month_tx: 4351673970, total_rx: 5707805336, total_tx: 5203609923 },
 })
 const NODES = { nodes: [node(1, '东京一号', '东京', 'JP', 'Debian GNU/Linux 12 (bookworm)'), node(2, '香港一号', '香港', 'HK', 'Ubuntu 22.04.4 LTS'), node(3, '法兰克福一号', '法兰克福', 'DE', 'Debian GNU/Linux 12 (bookworm)'), node(4, 'US-Backup', '', 'US', 'Windows Server 2022')] }
-const CONFIG = {}
 
 const serveFile = (res, path) => {
   const file = join('dist', normalize(path === '/' ? '/index.html' : path).replace(/^(\.\.[/\\])+/, ''))
@@ -52,8 +51,7 @@ const server = createServer((req, res) => {
   if (path.startsWith('/api/')) {
     const body = path === '/api/me' ? { authed: false, github: false, public_page: true, site: BASE, site_name: '示例站 · 一台名字特别长的探针服务器 Tokyo' }   // ★ 故意长：让顶栏图标带装不下、走横向滑动那条路
       : path === '/api/nodes' ? NODES
-        : path.endsWith('/config') ? CONFIG
-          : path.includes('/metrics') ? { metrics: [], probes: [], loss: {} } : {}
+        : path.includes('/metrics') ? { metrics: [], probes: [], loss: {} } : {}
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
     return res.end(JSON.stringify(body))
   }

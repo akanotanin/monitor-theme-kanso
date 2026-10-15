@@ -56,7 +56,6 @@ const server = createServer((req, res) => {
     const body = path === '/api/me' ? { authed: false, github: false, public_page: true, site: `http://127.0.0.1:${PORT}`, site_name: '适配验收', history_days: 30 }
       : path === '/api/nodes' ? { nodes: FLEET }
       : /^\/api\/nodes\/\d+\/metrics$/.test(path) ? { metrics: METRICS_ROWS, ping: [], probes: {}, loss: {}, step: 60 }
-      : path.endsWith('/config') ? {}
       : {}
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
     return res.end(JSON.stringify(body))

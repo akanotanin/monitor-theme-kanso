@@ -133,14 +133,14 @@ for (const shot of SHOTS.filter((s) => !ONLY || s.name.includes(ONLY))) {
     flagSrc: [...document.querySelectorAll('img[src^="/flags/"]')].slice(0, 3).map((i) => i.getAttribute('src')),
     farmEntry: !!document.querySelector('a[title="农场入口"]'),
     farmHref: document.querySelector('a[title="农场入口"]')?.getAttribute('href') || '(没有)',
-    // 站标地址是主题设置项，可能被站长换掉；顺带报它有没有真的加载出来
-    // （naturalWidth=0 就是取不到、已经退回默认或者空白）。
+    // 站标地址由 hub 面板管（1.4.0 起「设置 → 站点图标」），可能被站长换掉；顺带报它有没有
+    // 真的加载出来（naturalWidth=0 就是取不到、已经退回默认或者空白）。
     siteIcon: document.querySelector('header img')?.getAttribute('src') || '(没有)',
     siteIconLoaded: (document.querySelector('header img')?.naturalWidth ?? 0) > 0,
-    // 标签页图标跟站点图标是同一个地址（主题设置里改一处两处一起变）。
+    // 标签页图标跟站点图标是同一个地址（面板里改一处两处一起变）。
     favicon: document.querySelector('link[rel~="icon"]')?.getAttribute('href') || '(没有)',
     touchIcon: document.querySelector('link[rel="apple-touch-icon"]')?.getAttribute('href') || '(没有)',
-    // 分组标签已随精简移除（不是设置项了）：这里应当是空数组。
+    // 分组标签已随精简移除：这里应当是空数组。
     groupTabs: [...document.querySelectorAll('[role=group][aria-label=分组] button')].map((b) => b.innerText),
     cards: document.querySelectorAll('[role=button]').length,
     h3: [...document.querySelectorAll('h3')].slice(0, 3).map((h) => h.textContent),

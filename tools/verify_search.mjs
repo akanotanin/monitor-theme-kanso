@@ -24,9 +24,7 @@ const BASE = (process.argv[2] || `http://127.0.0.1:${PORT}`).replace(/\/$/, '')
 const REAL = !!process.argv[2]
 const SETTLE = Number(process.env.SEARCH_WAIT_MS || 2500)
 const SHOT_DIR = process.env.SHOT_DIR || ''
-// 夹具配置钉死（技能第 44 条：判据只由代码决定，不取自那台 hub 上存的配置）。
-// `listTop: "both"` = 分组标签 + 概览卡片·原版：「概览跟着搜索收窄」这一条才验得到。
-const CONFIG = {}
+// 1.6.0 起没有站点配置可钉（主题不读任何设置），夹具只有下面这份节点列表。
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.webp': 'image/webp', '.woff2': 'font/woff2' }
 
 function node(id, name, group, country, os) {
@@ -54,7 +52,6 @@ const NODES = {
   ],
 }
 
-let configHits = 0
 const serveFile = (res, path) => {
   const file = join('dist', normalize(path === '/' ? '/index.html' : path).replace(/^(\.\.[/\\])+/, ''))
   if (!existsSync(file) || statSync(file).isDirectory()) {
@@ -67,11 +64,9 @@ const serveFile = (res, path) => {
 const server = createServer((req, res) => {
   const path = new URL(req.url, `http://127.0.0.1:${PORT}`).pathname
   if (path.startsWith('/api/')) {
-    if (path.endsWith('/config')) configHits++
     const body = path === '/api/me' ? { authed: false, github: false, public_page: true, site: BASE, site_name: '探针' }
       : path === '/api/nodes' ? NODES
-        : path.endsWith('/config') ? CONFIG
-          : path.includes('/metrics') ? { metrics: [], probes: [], loss: {} } : {}
+        : path.includes('/metrics') ? { metrics: [], probes: [], loss: {} } : {}
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
     return res.end(JSON.stringify(body))
   }
@@ -79,7 +74,7 @@ const server = createServer((req, res) => {
 })
 if (!REAL) {
   await new Promise((r) => server.listen(PORT, '127.0.0.1', r))
-  console.log(`dist/ 伺服在 ${BASE}/（夹具配置 ${JSON.stringify(CONFIG)}，六台机器）`)
+  console.log(`dist/ 伺服在 ${BASE}/（六台机器）`)
 } else {
   console.log(`直接打真站: ${BASE}（本机不伺服 dist；夹具那些「搜出几台」的断言跳过）`)
 }
@@ -533,7 +528,6 @@ if (REAL) {
 }
 
 check('全程没有控制台异常', errors.length === 0, errors.slice(0, 3).join(' | '))
-if (!REAL) check('夹具配置真的被用上了（那条 /config 是打到本机桩上的）', configHits >= 1, `${configHits} 次`)
 console.log(`\n结果: PASS ${pass} / FAIL ${fail}`)
 ws.close(); chrome.kill(); if (!REAL) server.close()
 process.exit(fail ? 1 : 0)

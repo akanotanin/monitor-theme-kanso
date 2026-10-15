@@ -3,7 +3,7 @@
 // 用法：ssh -f -N -L 28085:127.0.0.1:28080 <hub 那台机器>
 //       node tools/check_real_hub.mjs http://127.0.0.1:28085
 //
-// 看三件事：① 真 hub 的 /api/me 与主题设置下，标题/图标两处都对 ② 刷新时标签页首帧
+// 看三件事：① 真 hub 的 /api/me 下，标题/图标两处都对 ② 刷新时标签页首帧
 // 就是站名、没有占位值闪过（innerHTML 内联那段的来源记成 inline）③ 控制台无异常。
 // 静态走本机是为了把隧道对静态文件的那点干扰分开；数据仍是真的。
 import { spawn } from 'node:child_process'
@@ -12,7 +12,7 @@ import { setTimeout as sleep } from 'node:timers/promises'
 
 const UPSTREAM = process.argv[2]
 const PORT = 5399
-const server = spawn('node', ['tools/serve.mjs', String(PORT), '', '', UPSTREAM], { stdio: ['ignore', 'pipe', 'pipe'] })
+const server = spawn('node', ['tools/serve.mjs', String(PORT), '', UPSTREAM], { stdio: ['ignore', 'pipe', 'pipe'] })
 let log = ''
 server.stdout.on('data', (d) => { log += d })
 server.stderr.on('data', (d) => { log += d })
@@ -22,8 +22,7 @@ if (!up) { console.error('本地伺服没起来：\n' + log); server.kill(); pro
 const base = `http://127.0.0.1:${PORT}`
 console.log(`本地伺服装好：${base}（静态 = 本机 dist/，/api/* → ${UPSTREAM}）`)
 const me = await (await fetch(`${base}/api/me`)).json()
-const cfg = await (await fetch(`${base}/api/themes/kanso/config`)).json()
-console.log(`真 hub 的 /api/me: ${JSON.stringify(me)}\n真 hub 的主题设置: ${JSON.stringify(cfg)}`)
+console.log(`真 hub 的 /api/me: ${JSON.stringify(me)}`)
 
 const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find((p) => existsSync(p)) || 'chrome'
 const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=9993', '--remote-allow-origins=*', '--no-first-run',

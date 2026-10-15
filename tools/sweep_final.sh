@@ -21,6 +21,7 @@ done
 #       裸跑必然「没抓到结果行」——跑真机时单独指定（用法见各工具头部）：
 #         ssh -N -L 28085:127.0.0.1:28080 <hub 那台机器>
 #         node tools/verify_detail_preload.mjs http://127.0.0.1:28085     # kanso dist + 真 hub 数据
-#     ② verify_settings_dialog 需要 `<theme.json> <前缀> <hub隧道地址>` 三个参数，同样不在这份裸跑清单里：
+#     ② verify_settings_dialog（验证后台「没有主题设置入口」）需要 `<theme.json> <前缀> <hub隧道地址>`
+#        三个参数，同样不在这份裸跑清单里；拿带 config 的旧 theme.json 跑时那边应当 FAIL（对照组）：
 #         node tools/verify_settings_dialog.mjs theme.json shots/settings-dialog-kanso http://127.0.0.1:28085
 echo "===== 跑完 =====" >> "$OUT"

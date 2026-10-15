@@ -4,12 +4,11 @@ import { useEffect, useMemo, useState } from "react"
 import { TimeChart } from "@/components/Chart"
 import { PingTooltip } from "@/components/ChartTooltip"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Country, deployed, offlineSeconds, RemarkChips } from "@/components/NodeCard"
+import { Country, deployed, offlineSeconds } from "@/components/NodeCard"
 import { api, type Node } from "@/lib/api"
 import {
   axisBytes, axisTop, bytes, despike, cpuName, osName, rate, uptime,
 } from "@/lib/format"
-import { hasDetailRemarks, remarkChips } from "@/lib/notes"
 import { rangesFor } from "@/lib/ranges"
 
 type Point = {
@@ -167,16 +166,11 @@ function Fact({ label, value }: { label: string; value?: string | number | null 
   )
 }
 
-export function NodeDetail({ node, historyDays, detailRemarks = true }: {
+export function NodeDetail({ node, historyDays }: {
   node: Node
   /** hub 的历史保留天数（`/api/me` 的 `history_days`）；老 hub 不给，按 7 天算（见 @/lib/ranges）。 */
   historyDays?: number
-  /** 整页详情那一行备注小卡片显不显示（主题设置 `detailRemarks`，默认显示）。 */
-  detailRemarks?: boolean
 }) {
-  // 这台机器的备注（见 @/lib/notes）：私有在前（仅自己可见）、公有在后，都拆成一枚枚小卡片。
-  // 判据与骨架共用一处（hasDetailRemarks）：两边口径一歪，骨架就会对不上高度（护栏 verify_detail_preload）。
-  const detailChips = hasDetailRemarks(node, detailRemarks) ? remarkChips(node) : []
   // 页签听地址栏的：`?tab=latency` 时直接落在「网络延迟」；其余一概落「资源」，与从前一致。
   // 刷新同理：URL 里带着哪个页签，落哪个。
   const [tab, setTab] = useState<(typeof TABS)[number]["key"]>(
@@ -392,18 +386,6 @@ export function NodeDetail({ node, historyDays, detailRemarks = true }: {
             那一格——公开页的访客关心这台机器还活着多久，价格与到期在后台看。 */}
         <Fact label="在线时间" value={onlineFor(node)} />
       </dl>
-
-      {/* 整页详情那一块备注：**私有 + 公有合并成一串小卡片**（私有在前、带锁与描边 = 仅自己可见）。
-          hub 只把私有备注下发给登录的管理员，所以访客在这一块里看到的就只有公有那几枚——同一套版式，
-          不需要两套分支（见 `@/lib/notes` 的 `remarkChips`）。
-          ★**不加容器**（没有底、没有描边、没有内边距）：小卡片直接落在页面上，与列表卡片那几处同一副
-          面孔。早先那层「白框」是给整段文字当底用的，改成小卡片之后它只是多余的一圈边（用户 2026-10-03
-          要求去掉）。护栏里有一条断「那一块没有描边、底色是透明的」。没写备注时一个像素都不占。 */}
-      {detailChips.length > 0 && (
-        <div data-remark-block className="flex min-w-0 flex-wrap items-center gap-1">
-          <RemarkChips chips={detailChips} />
-        </div>
-      )}
 
       <div className="space-y-2 border-t border-border/70 pt-4">
         <div className="flex gap-1">

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react"
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { Moon, Sun, Wrench } from "lucide-react"
 
 import { NodeCard } from "@/components/NodeCard"
@@ -58,7 +58,7 @@ const NodeDetail = lazy(loadDetail)
  */
 function DetailSkeleton({ hasRemarks = false, hasConnections = false }: { hasRemarks?: boolean; hasConnections?: boolean }) {
   return (
-    <div className="detail-skeleton space-y-4" aria-busy="true">
+    <div className="space-y-4" aria-busy="true">
       <div className="flex items-center gap-2">
         <Skeleton className="size-6 shrink-0 rounded-[3px]" />
         <Skeleton className="h-7 w-44" />
@@ -123,10 +123,9 @@ function readListState(): ListState {
 }
 
 /** 列表 / 详情共用的地址串：有搜索词才带；详情页可选再带 `?tab=`。 */
-function pageUrl(id: number | null, tab: string | null, s: ListState): string {
+function pageUrl(id: number | null, s: ListState): string {
   const p = new URLSearchParams()
   if (s.q.trim() !== "") p.set("q", s.q)
-  if (id !== null && tab) p.set("tab", tab)
   const qs = p.toString()
   return `${id === null ? "/" : `/node/${id}`}${qs ? `?${qs}` : ""}`
 }
@@ -149,7 +148,10 @@ function useNodeRoute(onPop: (s: ListState) => void) {
   return [
     id,
     (next: number | null, url?: string) => {
-      history.pushState({}, "", url ?? (next === null ? "/" : `/node/${next}`))
+      const target = url ?? (next === null ? "/" : `/node/${next}`)
+      // ★同址不 push（2026-10-15 审出来）：站名按钮在列表页点一下也会 push 一条与当前逐字相同的
+      //   记录，之后「后退」第一次看着像没反应（URL 没变、页面没动）。相同就只回到顶部。
+      if (target !== location.pathname + location.search) history.pushState({}, "", target)
       setId(next)
       scrollTo(0, 0)
     },
@@ -157,6 +159,14 @@ function useNodeRoute(onPop: (s: ListState) => void) {
 }
 
 const DARK_MEDIA = matchMedia("(prefers-color-scheme: dark)")
+
+// ★媒体查询的订阅函数放在**模块作用域**（2026-10-15 审出来）：写成组件里的内联箭头时身份每次渲染
+// 都变，useSyncExternalStore 于是在每次提交都退订再订阅（实测每次数据更新多一对 add/remove）。
+const subscribeSystemDark = (notify: () => void) => {
+  DARK_MEDIA.addEventListener("change", notify)
+  return () => DARK_MEDIA.removeEventListener("change", notify)
+}
+const readSystemDark = () => DARK_MEDIA.matches
 
 /**
  * The visitor's own choice, or the system's while there is none. Only the toggle
@@ -181,13 +191,7 @@ function useTheme(siteMode: ThemeMode) {
       return null
     }
   })
-  const system = useSyncExternalStore(
-    (notify) => {
-      DARK_MEDIA.addEventListener("change", notify)
-      return () => DARK_MEDIA.removeEventListener("change", notify)
-    },
-    () => DARK_MEDIA.matches,
-  )
+  const system = useSyncExternalStore(subscribeSystemDark, readSystemDark)
   // siteMode 变档时马上按新档校正一次「夜里没夜里」——不等下一分钟。
   // 写法用「渲染期调节 state」而不是在 effect 里同步 setState（后者要多一轮级联渲染，
   // oxlint 也点名这一条）；模式这一档运行时几乎不变，代价最多是一次立即重放。
@@ -330,6 +334,7 @@ export default function App() {
    */
   const warmed = useRef(false)
   const warmDetail = useCallback(() => {
+    if (warmed.current) return
     warmed.current = true
     void loadDetail()
   }, [])
@@ -378,13 +383,15 @@ export default function App() {
   // 仍按站长排序（`sort`，并列再按 `id`），所以这只是在排序键前面加了一层「有数据 0 /
   // 没有 1」——同一台机器在两次帧之间的位置是确定的，不会自己抖动。搜索那一层筛选就是在
   // 这份排好序的列表上切的。
-  const sorted = [...(nodes ?? [])].sort((a, b) => {
+  // ★排序与筛选都记忆化（2026-10-15 审出来）：原来每敲一个字、每 2 秒一帧数据都要重排一遍
+  //   （searchNodes 还会给每台机器拼一遍搜索文本）。键就是它们的两个输入。
+  const sorted = useMemo(() => [...(nodes ?? [])].sort((a, b) => {
     const hasData = (n: typeof a) => Number(!!(n.online && n.metrics))
     return hasData(b) - hasData(a) || a.sort - b.sort || a.id - b.id
-  })
+  }), [nodes])
   const selected = sorted.find((n) => n.id === open)
   // 搜索是列表上唯一一层筛选（口径见 @/lib/search）：下面那张列表与键盘导航都吃这一份。
-  const found = searchNodes(sorted, query)
+  const found = useMemo(() => searchNodes(sorted, query), [sorted, query])
 
   /**
    * 搜索词变了就把地址栏跟手更新（`replaceState`）。
@@ -396,18 +403,18 @@ export default function App() {
    */
   useEffect(() => {
     if (open !== null) return
-    history.replaceState({}, "", pageUrl(null, null, { q: query }))
+    history.replaceState({}, "", pageUrl(null, { q: query }))
   }, [open, query])
 
   /**
    * 进详情 / 回列表都走这里，把**当前搜索词**一并写进地址（刷新或分享详情链接时，列表那一屏
    * 也能原样复原）。
    */
-  const openNode = (id: number, tab: "latency" | null = null) => {
-    go(id, pageUrl(id, tab, { q: query }))
+  const openNode = (id: number) => {
+    go(id, pageUrl(id, { q: query }))
   }
   const openList = () => {
-    go(null, pageUrl(null, null, { q: query }))
+    go(null, pageUrl(null, { q: query }))
   }
 
   // 搜索键盘导航（↑↓ 选、Enter 开）：下标是「命中列表里的第几台」，不变式与清零时机见 cursor 的声明处。
@@ -563,6 +570,12 @@ export default function App() {
           <>
             {/* 一台都剩不下时说清楚是搜索把它筛没的，并指回去哪儿取消 —— 否则访客只看到
                 一大片空白，会以为站点坏了。 */}
+            {/* 搜索时把命中数播报给读屏（2026-10-15 审出来）：卡片是通过 role=button 暴露的，
+                键盘选中只落在 data-selected 与那圈 outline 上，读屏既听不到命中几台、也不知道
+                当前选中谁。先补最便宜的一半：一条 sr-only 的 live region。 */}
+            {found.active && query.trim() !== "" && (
+              <p className="sr-only" aria-live="polite">命中 {found.shown.length} 台</p>
+            )}
             {found.active && found.shown.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 当前筛选下没有匹配「{found.query.trim()}」的节点 —— 名称、地区、系统三处都能搜
@@ -639,13 +652,15 @@ function SiteIcon() {
  * 每块 12 张（约 30ms，短于 50ms 的长任务线），块与块之间用 `setTimeout(0)` 让浏览器先画一帧。
  * 少于一块的量（≤24 台）完全不改变行为 —— 护栏用的都是小夹具，不受影响。
  */
-function useProgressive(total: number, first = 24, step = 12): number {
+function useProgressive(total: number, identity: string, first = 24, step = 12): number {
   const [limit, setLimit] = useState(() => Math.min(total, first))
-  // 换了筛选/搜索（total 变了），列表换了，重新从第一批开始 —— 渲染期直接比，不放进 effect
-  // （effect 里同步 setState 会白白多跑一轮渲染）。
-  const [seenTotal, setSeenTotal] = useState(total)
-  if (seenTotal !== total) {
-    setSeenTotal(total)
+  // ★重置键是**筛选身份**（搜索词），不是台数（2026-10-15 审出来）：原来只要台数变（线上多/少一台、
+  //   夹具 60→61）就把上限打回 24，列表在屏上整段闪一下（rAF 逐帧实测 [60,24,36,48,60,61]），
+  //   过程中文档高度骤降、滚动位置被浏览器夹回去。渲染期直接比，不放进 effect
+  //   （effect 里同步 setState 会白白多跑一轮渲染）。
+  const [seen, setSeen] = useState(identity)
+  if (seen !== identity) {
+    setSeen(identity)
     setLimit(Math.min(total, first))
   }
   useEffect(() => {
@@ -653,7 +668,8 @@ function useProgressive(total: number, first = 24, step = 12): number {
     const timer = setTimeout(() => setLimit((n) => Math.min(total, n + step)), 0)
     return () => clearTimeout(timer)
   }, [limit, total, step])
-  return limit
+  // 台数变少时只夹这一次，不改状态：下一帧台数回来了，仍旧从原来的进度接着长。
+  return Math.min(limit, total)
 }
 
 /**
@@ -666,7 +682,7 @@ function NodeList({ nodes, total, onOpen, onWarm, terms, cursorId }: {
   /** 全量台数（未过滤）：一台都没有时才说「还没有节点」，被搜索筛空的处理在 App 里。 */
   total: number
   /** 进详情。 */
-  onOpen: (id: number, tab?: "latency") => void
+  onOpen: (id: number) => void
   /** 指针/键盘刚落到某一张卡片上：把详情那块 chunk 先取回来（见 App 的 warmDetail）。 */
   onWarm: () => void
   /** 搜索命中词：卡片名字里描色（见 Highlight）。没在搜时是空数组 —— 一切照旧。 */
@@ -675,7 +691,8 @@ function NodeList({ nodes, total, onOpen, onWarm, terms, cursorId }: {
   cursorId: number | null
 }) {
   // 首屏先画一屏的量，剩下的分帧补上（见 useProgressive）。
-  const list = nodes.slice(0, useProgressive(nodes.length))
+  const limit = useProgressive(nodes.length, terms.join(" "))
+  const list = nodes.slice(0, limit)
   // 键盘选中（↑↓）的那台滚进视野：block: nearest —— 够不着才拉，不打断访客自己滚到的地方。
   // 分批挂载还没轮到它时（选择挂在第 25 台开外）查询落空，等下一批挂上来光标再动自然会被看见。
   useEffect(() => {

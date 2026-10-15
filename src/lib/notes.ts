@@ -38,7 +38,10 @@ export function hubTags(node: { public_remark?: string | null }): string[] {
 /** 私有备注 → 一枚枚小卡片：**先按换行分段、段内再按逗号拆**（hub 对它没有单行约束）。 */
 export function ownTags(node: { remark?: string | null }): string[] {
   return (node.remark ?? "")
-    .split(/\r?\n/)
+    // 换行口径：`\n` / `\r\n` 之外，裸 `\r`（接口写入与历史数据都可能带）
+    // 以及 `\u000b\f\u2028\u2029` 这些「也算换行」的控制符一并拆开 ——
+    // splitTags 认全角逗号的细致程度摆在那儿，只认 `\n` 会漏掉一整段（2026-10-15 审出来）。
+    .split(/[\r\n\u000b\f\u2028\u2029]+/)
     .flatMap((line) => splitTags(line))
 }
 

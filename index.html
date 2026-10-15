@@ -6,8 +6,11 @@
     <!-- 手机浏览器那一圈（地址栏 / 状态栏）的配色。这两份是**静态兜底**、按系统明暗挑；
          页面起来之后 App 的 useTheme 会摘掉它们、换成一份跟着**页面实际明暗**走的
          （站长的「随北京时间自动」在夜里与系统相反时，只有那一步才对得上）。
-         色值与 index.css 的 --background 同一套：亮 oklch(0.985 0 0)≈#fafafa、暗 oklch(0.155 0.004 85)≈#0d0c0a。 -->
-    <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)" />
+         色值与 index.css 的 --background 同一套：亮 oklch(0.985 0.001 106)≈#fafaf9（stone-50）、
+         暗 oklch(0.155 0.004 85)≈#0d0c0a。★这两份与 src/App.tsx 里那对兜底常量必须逐字一致 ——
+         2026-10-15 换暖石色系时 App 那份改了、这里漏了，差了整整一个色阶（scripts/check-config.mjs
+         现在钉着这条）。 -->
+    <meta name="theme-color" content="#fafaf9" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0d0c0a" media="(prefers-color-scheme: dark)" />
     <!-- 站点图标：hub 1.4.0 起由面板「设置 → 站点图标」管 —— 站长选好之后 `/favicon.svg`、
          `/favicon.ico`、`/apple-touch-icon.png` 这几条路径都由 hub 回答（它还会给 index.html 里

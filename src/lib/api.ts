@@ -104,10 +104,17 @@ export function safeNodes(nodes: Node[]): Node[] {
   const number = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0
   const fields = ["uptime", "cpu", "mem_total", "mem_used", "swap_total", "swap_used", "disk_total", "disk_used",
     "net_rx", "net_tx", "total_rx", "total_tx", "month_rx", "month_tx", "tcp", "udp", "procs"] as const
+  // ★顶层那几个**会被 UI 直接读**的字段也在这里归一（2026-10-15 审出来）：原来只验 metrics，
+  //   `os` / `cpu_name` / `currency` 形状漂移时一路透传到 osName()/cpuName()/money() 里抛 TypeError
+  //   （而且全仓没有错误边界 → 整页白）。类型上它们是 string，运行时按 string 兜。
+  const str = (v: unknown) => (typeof v === "string" ? v : "")
+  const clean = (node: Node) => typeof node.os === "string" && typeof node.cpu_name === "string" && typeof node.currency === "string"
   return nodes.map((node) => {
     const m = node.metrics
+    // 没病的节点**原样透传**（不 clone）：api.test.ts 钉着这条不变式，别为了统一写法把它改成每次 spread。
+    const safe = clean(node) ? node : { ...node, os: str(node.os), cpu_name: str(node.cpu_name), currency: str(node.currency) }
     return !m || (fields.every((key) => number(m[key])) && Array.isArray(m.load) && m.load.length === 3 && m.load.every(number))
-      ? node : { ...node, metrics: null }
+      ? safe : { ...safe, metrics: null }
   })
 }
 
@@ -137,7 +144,8 @@ export function useNodes() {
     let visible = document.visibilityState !== "hidden"
 
     const receive = (list: Node[]) => {
-      const safe = safeNodes(list)
+      // 非数组（帧里没 nodes / 老 hub 换形状）不能让它走到 safeNodes 里 `undefined.map`。
+      const safe = safeNodes(Array.isArray(list) ? list : [])
       setNodes(safe)
       setError(null)
       setClosed(false)
@@ -167,7 +175,14 @@ export function useNodes() {
       ws.onmessage = (event) => {
         // 重连换代之后，旧连接迟到的帧不算数。
         if (socket !== ws) return
-        receive(JSON.parse(event.data).nodes)
+        // ★一帧坏数据不该是未捕获异常、也不该让这条连接一直错下去（原来只有 onclose 才挂兜底轮询，
+        //   于是连接活着、页面却停在最后一帧上）。解析失败就补一次 HTTP 取数（2026-10-15 审出来）。
+        try {
+          receive(JSON.parse(event.data)?.nodes)
+        } catch {
+          fetchOnce()
+          return
+        }
         // The stream has returned; the poll was only covering for it.
         if (poll) {
           clearInterval(poll)

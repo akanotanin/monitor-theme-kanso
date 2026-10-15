@@ -1,7 +1,7 @@
 // 备注的取值与切分：公开备注（hub 下发给访客）与私有备注（只下发给登录的管理员）合并成一串小卡片。
 // 空 / 空白 / 没有这个字段都算「没写」；逗号分隔＝多枚小卡片；私有那条多一手「按换行也拆」。
 // 跑法同另外几个：`npm test`（Node 自己剥类型，不需要 runner）。没有任何东西 import 它，不进 bundle。
-import { hasDetailRemarks, hubTags, publicRemark, remarkChips, splitTags } from "./notes.ts"
+import { hasDetailRemarks, hubTags, ownTags, publicRemark, remarkChips, splitTags } from "./notes.ts"
 
 let failed = 0
 function eq(got: unknown, want: unknown, what: string) {
@@ -71,6 +71,11 @@ eq(hasDetailRemarks(noted, true), true, "有备注 + 开关开着 → 详情页�
 eq(hasDetailRemarks(noted, false), false, "有备注 + 开关关着 → 详情页不占位")
 eq(hasDetailRemarks({}, true), false, "没写备注 → 不占位")
 eq(hasDetailRemarks({ public_remark: "  ,  " }, true), false, "只有逗号空段 → 当作没写")
+
+// 裸 CR 也是换行（接口写入与历史数据都可能带）：口径是「按换行也拆」，只认 LF 会漏一整段
+eq(ownTags({ remark: "甲\r乙" }), ["甲", "乙"], "裸 CR 也要拆成两枚")
+eq(ownTags({ remark: "甲\r\n乙\n丙" }), ["甲", "乙", "丙"], "三种换行混着来也全拆")
+
 
 if (failed) {
   console.error(`\n备注：${failed} 条不通过`)

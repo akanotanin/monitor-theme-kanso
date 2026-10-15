@@ -7,7 +7,7 @@
 // 旧键对应的那一格已经不在面板上，读取它等于留了一个站长关不掉的暗开关。
 import { readFileSync } from "node:fs"
 
-import { DEFAULTS, normalizeConfig } from "./site-settings.ts"
+import { beijingHour, DEFAULTS, isBeijingNight, normalizeConfig, resolveDark } from "./site-settings.ts"
 
 let failed = 0
 function eq(got: unknown, want: unknown, what: string) {
@@ -43,6 +43,23 @@ for (const key of oldKeys) {
   eq(Object.keys(got).includes(key), false, `老键 ${key} 不再进主题配置`)
   eq(Object.keys(got).sort(), ["detailRemarks", "themeMode"], `老键 ${key} 不带来多余字段`)
   eq(got.themeMode, "dark", `老键 ${key} 不影响新键的取值`)
+}
+
+// ── auto 档：北京时间夜里那三个纯函数（2026-10-15 审出来：此前零覆盖）─────────
+// 边界就是 `h >= 19 || h < 7` 与 `(getUTCHours() + 8) % 24`：把 `>=` 写成 `>`、或 %24 写错，
+// 选 auto 的站点会整晚不切换，而别的断言照旧全绿。
+{
+  const utc = (h: number, m = 0) => new Date(Date.UTC(2026, 0, 1, h, m))
+  eq(beijingHour(utc(10, 59)), 18, "UTC 10:59 → 北京 18 点")
+  eq(beijingHour(utc(16)), 0, "UTC 16:00 → 北京 0 点（% 24 回绕）")
+  eq(isBeijingNight(utc(10, 59)), false, "北京 18:59 还不是夜里")
+  eq(isBeijingNight(utc(11)), true, "北京 19:00 就是夜里（含下界）")
+  eq(isBeijingNight(utc(22, 59)), true, "北京 06:59 仍在夜里")
+  eq(isBeijingNight(utc(23)), false, "北京 07:00 已经不是夜里（不含上界）")
+  eq(resolveDark("light", true, utc(14)), false, "light 档不看系统也不看钟点")
+  eq(resolveDark("dark", false, utc(2)), true, "dark 档不看系统也不看钟点")
+  eq(resolveDark("system", true, utc(2)), true, "system 档跟系统（哪怕是北京的白天）")
+  eq(resolveDark("system", false, utc(14)), false, "system 档跟系统")
 }
 
 // ── 护栏：theme.json 的字段与 DEFAULTS 必须一一对上 ──────────────────

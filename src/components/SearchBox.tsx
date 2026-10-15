@@ -115,6 +115,8 @@ function Field({ value, onChange, onActivate, onClose, onMove, onEnter, autoFocu
   variant?: "square" | "row"
 }) {
   const box = useRef<HTMLInputElement>(null)
+  // 输入法组合中（见 input 上那两处注释）：组合期间不接快捷键、也不把中间态抛给上层。
+  const composing = useRef(false)
   const square = variant === "square"
   return (
     <span
@@ -139,8 +141,23 @@ function Field({ value, onChange, onActivate, onClose, onMove, onEnter, autoFocu
         value={value}
         autoFocus={autoFocus}
         onFocus={onActivate}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          // ★组合中不往上抛（2026-10-15 审出来）：中文输入法打字时 Chromium 也会为中间态派发 input，
+          //   抛上去 App 就拿「dongjing」当搜索词，列表瞬间被筛空并弹出「没有匹配…」，组合结束才跳回来。
+          //   React 的受控输入在组合期间**不会**用旧值覆盖 DOM（这正是 CJK 能在受控输入里打字的缘故），
+          //   所以这里不抛是安全的；组合结束时下面 onCompositionEnd 会把最终词补上。
+          if (!composing.current) onChange(e.target.value)
+        }}
+        onCompositionStart={() => { composing.current = true }}
+        onCompositionEnd={(e) => {
+          composing.current = false
+          onChange(e.currentTarget.value)
+        }}
         onKeyDown={(e) => {
+          // ★组合期间一切快捷键都不接：确认候选词的那一下 Enter 会带 isComposing: true 派发，
+          //   原来会直接走 onEnter —— 只要此前用 ↑↓ 选过一台，确认词就等于点开那台机器的详情页；
+          //   ↑↓ 的 preventDefault 还会顶掉部分输入法的候选翻页（2026-10-15 审出来）。
+          if ((e.nativeEvent as KeyboardEvent & { isComposing?: boolean }).isComposing || e.keyCode === 229) return
           // ↑↓ 选的是**下面那张列表**（命中列表的顺序），不是输入框里的光标历史 ——
           // 一概吞掉：单行搜索框里这两下本来没有用途，放行只会让光标跳到词首/词尾。
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {

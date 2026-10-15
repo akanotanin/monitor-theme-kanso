@@ -191,7 +191,10 @@ export function TimeChart({
           const mid = (lo + hi) / 2
           return niceScale(mid - minSpan / 2, mid + minSpan / 2)
         })()
-      : { lo: 0, hi: top > 0 ? top : 1, ticks: quarters(top) }
+      // ★`top` 是 hub 的 mem_total / disk_total，可能缺失或是 0（safeNodes 不校验顶层字段）：
+      //   原来只给 hi 兜底、ticks 仍拿原值 —— top=0 时五枚刻度重名重叠，top 缺失时整条 Y 轴消失
+      //   （2026-10-15 审出来）。
+      : (() => { const hi = Number.isFinite(top) && top > 0 ? top : 1; return { lo: 0, hi, ticks: quarters(hi) } })()
   const yRange = Math.max(1e-9, scale.hi - scale.lo)
 
   const x = (ts: number) => left + ((ts - t0) / span) * plotW
@@ -199,7 +202,11 @@ export function TimeChart({
 
   const yLabel = yFormat ?? ((value: number) => String(Math.round(value * 10) / 10))
   const xTicks = view.length > 1 ? timeTicks(t0, t1).filter((t) => t >= t0 && t <= t1) : []
-  const clock = clockFor(hours)
+  // ★格式跟着**可见区间**走，不是整窗（2026-10-15 审出来）：刻度位置本来就是按 t0/t1 算的，
+  //   格式却取页签量程 —— 30 天窗口里放大到两小时，8 枚刻度相隔十几分钟却全印成「10/15」，
+  //   放大了反而看不出时间。
+  // 退化的单点区间（t1===t0）才回落到页签量程；正常有区间时一律按可见跨度格式。
+  const clock = clockFor(t1 > t0 ? Math.max(1, (t1 - t0) / 3.6e6) : hours)
   // 撞在一起的刻度标签直接丢掉（原来靠 recharts 的 minTickGap，这里自己算）：
   // 按 11px 的近似字宽排一遍，与前一个标签的右沿重叠就不画。
   const keptX: number[] = []
@@ -412,6 +419,13 @@ export function TimeChart({
             onPointerMove={(e) => {
               if (!drag) return
               setDrag({ ...drag, to: indexAt(e.clientX, e.currentTarget) })
+            }}
+            onPointerCancel={() => {
+              // ★触屏竖划时浏览器接管手势、对这层派发的是 pointercancel（不会再有 pointerup）：
+              //   原来没人接，拖选状态就一直挂着（灰底矩形留在图上、悬停竖线也再不出现），
+              //   直到下一次 pointerdown（2026-10-15 审出来）。
+              // 不必手动 releasePointerCapture：pointerup / pointercancel 之后浏览器自己会解除。
+              setDrag(null)
             }}
             onPointerUp={() => {
               if (!drag || !onZoom) return

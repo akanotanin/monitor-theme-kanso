@@ -27,7 +27,9 @@ export function bytes(n: number, digits?: number): string {
  * spanning two units has nothing to save and falls back to bytes().
  */
 export function pair(used: number, total: number): string {
-  if (used > 0 && total > 0 && unitOf(used) === unitOf(total)) {
+  // `< 1` 而不是 `> 0`：与 bytes()/rate() 同一条底线 —— 两侧都落在亚字节档时 unitOf 给 -1，
+  // 上面那串会印出「256.00 / 512.00 undefined」（2026-10-15 审出来，同款坑防过一次）。
+  if (used >= 1 && total >= 1 && unitOf(used) === unitOf(total)) {
     const i = unitOf(total)
     const f = (n: number) => (n / 1024 ** i).toFixed(i === 0 ? 0 : 2)
     return `${f(used)} / ${f(total)} ${UNITS[i]}`
@@ -79,8 +81,15 @@ export function rate(n: number): string {
   return `${v.toFixed(i >= 1 && v < 10 ? 1 : 0)} ${UNITS[i]}/s`
 }
 
+/**
+ * 百分比。★两头都要守（2026-10-15 审出来）：原来只有 `total > 0` 一道闸，于是
+ * `percent(NaN, x)` 一路印成「NaN%」、`percent(-1, x)` 出负数；更阴的是卡片把返回值直接当
+ * `width:` 用 —— NaN 让这条 CSS 失效、宽度回落 auto，**看起来像「流量用满了」**。
+ * 坏值一律回 0（Meter 自己也 clamp，但文字那几处没有第二道闸）。
+ */
 export function percent(used: number, total: number): number {
-  return total > 0 ? Math.min(100, (used / total) * 100) : 0
+  if (!Number.isFinite(used) || !Number.isFinite(total) || total <= 0) return 0
+  return Math.min(100, Math.max(0, (used / total) * 100))
 }
 
 export function uptime(seconds: number): string {
@@ -94,7 +103,11 @@ export function uptime(seconds: number): string {
 /** Whole days until a date, negative once it has passed. */
 export function daysUntil(date?: string | null): number | null {
   if (!date) return null
-  const target = new Date(`${date}T00:00:00`).getTime()
+  // 只取日期那一段再拼零点：`expires_at` 的形状只有 `string | null` 这个约定，hub 换成
+  // RFC3339 / 带时间戳的写法时，直接拼 `T00:00:00` 会得到 Invalid Date —— 不报错、只是
+  // 卡片上「剩余 N 天」那半截静默消失（2026-10-15 审出来）。
+  const day = String(date).slice(0, 10)
+  const target = new Date(`${day}T00:00:00`).getTime()
   if (Number.isNaN(target)) return null
   return Math.ceil((target - Date.now()) / 86400000)
 }
@@ -110,7 +123,7 @@ const SYMBOLS: Record<string, string> = { USD: "$", CNY: "¥", EUR: "€", GBP: 
 
 /** 币种对应的符号；表里没有的币种返回空串（金额那一半会退化成后缀的 ISO 代码）。 */
 export function currencySymbol(currency: string): string {
-  return SYMBOLS[currency] ?? ""
+  return (typeof currency === "string" && SYMBOLS[currency]) || ""
 }
 
 /**
@@ -118,7 +131,12 @@ export function currencySymbol(currency: string): string {
  * 分开是为了「符号单独占一列」的排版：符号进下面那枚读数盒的图标位，数字留在文字位。
  */
 export function moneyAmount(amount: number, currency: string): string {
-  return SYMBOLS[currency] ? amount.toFixed(2) : `${amount.toFixed(2)} ${currency}`.trim()
+  // 金额与币种都来自 hub 的**顶层**字段（safeNodes 只管 metrics）：形状坏掉时宁可退成「0.00」，
+  // 也不能印出「349.00 undefined」或在 `amount.toFixed` 上抛错把整页带走
+  //（`node.price > 0` 那道闸挡不住数字字符串 "349" —— JS 比较会转型，随后 toFixed 就不存在）。
+  const n = typeof amount === "number" && Number.isFinite(amount) ? amount : 0
+  const code = typeof currency === "string" ? currency.trim() : ""
+  return SYMBOLS[code] ? n.toFixed(2) : `${n.toFixed(2)} ${code}`.trim()
 }
 
 export function money(amount: number, currency: string): string {

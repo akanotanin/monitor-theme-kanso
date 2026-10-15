@@ -246,8 +246,14 @@ export const COUNTRY_CITY_FALLBACK: Record<string, string> = {
 
 /** 节点名/分组里认出的城市线索。 */
 export function cityHint(node: Pick<Node, "name" | "group">): { ll: [number, number]; name: string } | null {
-  const text = [node.name, node.group].filter(Boolean).join(" ")
-  for (const hint of CITY_HINTS) if (hint.match.test(text)) return { ll: hint.ll, name: hint.name }
+  // ★先只看**节点名**、未命中再把分组拼上（2026-10-15 审出来）：原来两者拼成一串再按表序取，
+  //   于是名字写 Osaka、分组写「东京」的机器被判成东京（夹具里就有这台），而注释一直是
+  //   「节点名里出现就按这座城市算」。表序只用来裁同一段文本里的冲突。
+  const merged = [node.name, node.group].filter(Boolean).join(" ")
+  for (const text of [node.name ?? "", merged]) {
+    if (!text) continue
+    for (const hint of CITY_HINTS) if (hint.match.test(text)) return { ll: hint.ll, name: hint.name }
+  }
   return null
 }
 

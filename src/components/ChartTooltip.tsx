@@ -47,6 +47,13 @@ const finite = (entry: TooltipEntry) =>
 // 640px：与卡片网格的 `sm:` 断点同一处，窄屏上一张 tooltip 最多也就压住七十来字。
 const NARROW = 640
 
+/**
+ * 时间戳的格式化器提到**模块级**：构造 `Intl.DateTimeFormat` 曾是详情页最大的一笔开销
+ * （见 `@/lib/format` 里那三个同类格式化器的注释：1531ms 里的 348ms），而这张 tooltip 在悬停期间
+ * 每次 mousemove 都要重渲染一帧 —— 每帧现构造一个等于把那份开销按指针事件重付一遍。
+ */
+const STAMP = new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "medium" })
+
 export function ChartTooltip({
   active,
   payload,
@@ -70,7 +77,7 @@ export function ChartTooltip({
   return (
     <div className="pointer-events-none max-w-[70vw] rounded-lg border bg-popover px-2 py-1.5 text-[11px] leading-tight shadow-md">
       {/* 时间戳自己格式化：默认 tooltip 的标题在这套样式里字号偏大，而且 hub 给的是秒。 */}
-      <div className="mb-1 text-muted-foreground">{new Date(Number(label)).toLocaleString("zh-CN")}</div>
+      <div className="mb-1 text-muted-foreground">{STAMP.format(Number(label))}</div>
       <ul className="space-y-px">
         {shown.map((entry) => (
           <li key={String(entry.dataKey)} className="flex items-center gap-1.5 whitespace-nowrap">
@@ -136,13 +143,16 @@ export function PingTooltip({
       worstFirst
       capNarrow={5}
       format={(value) => `${value} ms`}
-      // 没答上来的排最后：它们是「没有值」，不是「很快」。
+      // 没答上来的**排最前**（value==null 映到最大键、降序即首位）：它是这一桶里最该看到的信息 ——
+      // 注释原来写「排最后」，与代码相反；2026-10-15 审出来时确认按代码这一支走，注释改成实话。
       sortKey={(entry) => (entry.value == null ? Number.MAX_SAFE_INTEGER : Number(entry.value))}
       keepEmpty={(entry) => lossOf(entry) > 0}
       emptyText="无响应"
       trailing={(entry) => {
         const loss = lossOf(entry)
-        return loss > 0 ? <span className="tnum pl-1 text-muted-foreground">丢 {loss}%</span> : null
+        // 与图例同一口径（NodeDetail 那边是「<1 就写 <1，其余四舍五入」）：这里原来直接印原始浮点，
+        // 12 个样本丢 1 个就是「丢 8.333333333333332%」，11px 的小卡片被撑开（2026-10-15 审出来）。
+        return loss > 0 ? <span className="tnum pl-1 text-muted-foreground">丢 {loss < 1 ? "<1" : Math.round(loss)}%</span> : null
       }}
     />
   )

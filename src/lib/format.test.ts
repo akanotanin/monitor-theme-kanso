@@ -4,7 +4,7 @@
 //
 // Nothing imports it, so the bundle never includes it.
 import {
-  axisBytes, axisTop, bytes, CYCLE_SHORT, CYCLES, cpuName, daysUntil, despike, osName, pair, quarters, rate, timeTicks, uptime,
+  axisBytes, axisTop, bytes, CYCLE_SHORT, CYCLES, cpuName, daysUntil, despike, osName, pair, percent, quarters, rate, timeTicks, uptime,
 } from "./format.ts"
 
 let failed = 0
@@ -88,7 +88,12 @@ for (const max of [3_000, 300_000, 3_000_000, 300_000_000]) {
   const day = 86_400_000
   const to = Date.now()
   const ticks = timeTicks(to - day, to)
+  // ★2026-10-15：原来只有「≤8 / every(...) / 间距均匀」三条，**返回空数组时全真空通过**
+  //   （把 timeTicks 改成 `return []` 实测仍全绿）。补上「非空」「落在窗口内」「相位对齐本地午夜」。
+  eq(ticks.length > 0, true, `24 小时窗要有刻度（得到 ${ticks.length}）`)
   eq(ticks.length <= 8, true, `24 小时窗最多 8 个刻度（得到 ${ticks.length}）`)
+  eq(ticks.every((t) => t >= to - day && t <= to), true, "刻度都落在窗口内")
+  eq(ticks.some((t) => new Date(t).getHours() === 0 && new Date(t).getMinutes() === 0), true, "至少一枚刻度落在本地零点（相位以本地午夜为基准，不是 epoch）")
   eq(
     ticks.every((t) => new Date(t).getMinutes() === 0 && new Date(t).getSeconds() === 0),
     true,
@@ -100,6 +105,17 @@ for (const max of [3_000, 300_000, 3_000_000, 300_000_000]) {
     "刻度间距均匀",
   )
   eq(timeTicks(to, to - day), [], "反向区间不产出刻度")
+}
+
+// 坏值守卫（2026-10-15 审出来的三处）：亚字节档的 pair、percent 的下界与非有限值、带时间的日期串。
+{
+  eq(pair(0.25, 0.5), "0 B / 0 B", "两侧都落在亚字节档 → 退成 bytes()，不印 undefined 单位")
+  eq(pair(2, 4), "2 / 4 B", "字节这一档不补小数（i===0 时 toFixed(0)），同一单位仍共用一个单位")
+  eq(percent(-1, 4), 0, "负读数夹到 0")
+  eq(percent(NaN, 4), 0, "NaN 读数夹到 0")
+  eq(percent(1, NaN), 0, "坏总量回 0（不能是 NaN —— 卡片直接拿它当 width）")
+  eq(percent(3, 4), 75, "正常值不变")
+  eq(daysUntil("2027-07-21T00:00:00Z"), daysUntil("2027-07-21"), "带时间的日期串按同一日算")
 }
 
 // daysUntil: whole days, negative once past, null when there is no date.

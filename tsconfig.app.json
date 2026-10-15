@@ -18,6 +18,10 @@
     "jsx": "react-jsx",
 
     /* Linting */
+    // ★2026-10-15 起开 strict：之前没开，但用 `--strict` 跑过一遍是 0 错（另拿一个故意写的
+    //   `const x: string = null` 验过探针确实灵），所以这是零成本的未来保险 —— 新代码里的
+    //   null/undefined 从编译期就被挡住。
+    "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,

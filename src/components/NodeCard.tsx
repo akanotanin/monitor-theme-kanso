@@ -218,6 +218,10 @@ export function NodeCard({ node, onOpen, onWarm, terms, selected }: {
       // data-selected 是「当前被键盘选中」的标记（护栏读它，不用去解析类名）。
       data-node-card={node.id}
       data-status={on ? "on" : "off"}
+      // ★可访问名给**机器的名字**（掉线时补一句）：role=button 的元素如果不给，读屏会把整张卡的
+      //   文字当名字念出来（实测 ~190 字：名字、系统、四个读数、速率、流量、底注全在内）。
+      //   卡里的读数仍然在可访问树里（它们不是装饰），只是名字短了（2026-10-15 审出来）。
+      aria-label={on ? node.name : `${node.name}（已离线）`}
       data-selected={selected ? "1" : undefined}
       className={`min-w-0 cursor-pointer gap-0 px-4 py-3 transition-colors hover:border-foreground/25 ${selected ? "outline-2 outline-offset-1 outline-ring" : ""}`}
       role="button"

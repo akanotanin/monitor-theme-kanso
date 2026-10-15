@@ -43,7 +43,10 @@
   --muted-foreground: oklch(0.553 0.012 58);
   --accent: oklch(0.970 0.001 106);
   --accent-foreground: oklch(0.216 0.006 56);
-  --destructive: oklch(0.3 0.008 56);
+  /* 「出错了」那支红：与状态红（--down）同族同档，但语义不同 —— 它管**文字**（读失败 / 网络错误）。
+     改前是 oklch(0.3 0.008 56)≈正文色，暗色那份更是与 --foreground 逐字相同：报错那行看起来
+     跟普通文字没两样（2026-10-15 审出来）。 */
+  --destructive: oklch(0.54 0.19 25);
   --border: oklch(0.923 0.003 49);
   --input: oklch(0.923 0.003 49);
   --ring: oklch(0.716 0.009 56);
@@ -64,15 +67,16 @@
      · `--ok` 是**图形**用的清新绿（进度条、状态点）—— 亮、透气，白卡上 2.3:1：条只有 3px、
        读数就在它正上方，值不靠它读，所以不套正文那套 4.5:1（点缀型图形的底线在
        verify_appearance 里单列成 ≥2）。
-     · `--ok-ink` 是**绿色文字**用的那支（↑ 上传 / ↓ 下载 标签）—— 与参考站的 emerald 同档，
-       白卡上 3.8:1，小字站得住。
-     琥珀 / 红仍是「越满越危险」那一族（详情页曲线、离线徽章）。 */
+     · `--ok-ink` 是**绿色文字**用的那支（↑ 上传 / ↓ 下载 标签，12px 正文）—— 它得过**正文**那道线：
+       白卡上 4.57:1（WCAG AA 小字 4.5:1）。原先那档 0.596 只有 3.76:1，2026-10-15 审下来不达标，
+       压到 0.54 才过（视觉上仍是同一支 emerald，只是深了一档）。 */
   --ok: oklch(0.723 0.192 150);
-  --ok-ink: oklch(0.596 0.127 163);
-  --warn: oklch(0.62 0.15 70);
-  /* 离线那一枚状态点与徽章用的红（2026-10-15 卡片改版时加的第三枚语义色，与 ok/warn 同族）：
-     亮色压亮度保证白卡上可读，暗色抬亮度，色相不变。 */
-  --down: oklch(0.58 0.19 25);
+  --ok-ink: oklch(0.54 0.14 163);
+  /* 离线那一枚状态点与徽章用的红（2026-10-15 卡片改版时加的第三枚语义色）：
+     ★徽章是「红字压在 12% 红底上」，所以这支红要按**它自己那层底**校验 —— 原来那档 0.58 在白卡上
+     有 4.73:1、看着达标，压到那层底上只剩 3.98:1（12px 小字 AA 要 4.5）。压到 0.54 之后
+     白卡 5.58:1 / 12% 底上 4.69:1，红点与徽章仍共用同一支红，颜色不散。 */
+  --down: oklch(0.54 0.19 25);
 }
 
 .dark {
@@ -110,7 +114,8 @@
   --muted-foreground: oklch(0.755 0.018 85);
   --accent: oklch(0.28 0.005 85);
   --accent-foreground: oklch(0.885 0.012 85);
-  --destructive: oklch(0.885 0.012 85);
+  /* 「出错了」的红：暗底上抬亮度（与暗色 --down 同档）。改前与 --foreground 逐字相同。 */
+  --destructive: oklch(0.7 0.17 25);
   /* 描边也跟着换成那支暖墨：纯白 12% 在暖色文字旁边会显出一道冷边。 */
   --border: oklch(0.885 0.012 85 / 13%);
   --input: oklch(0.885 0.012 85 / 16%);
@@ -127,8 +132,7 @@
   --chart-9: oklch(0.72 0.16 335);
   --ok: oklch(0.72 0.17 150);
   --ok-ink: oklch(0.78 0.13 160);
-  --warn: oklch(0.8 0.13 75);
-  /* 与亮色同一份色相，只抬亮度（见上面 --ok / --warn 的说明）。 */
+  /* 与亮色同一份色相，只抬亮度。 */
   --down: oklch(0.7 0.17 25);
 }
 
@@ -137,10 +141,9 @@
      数字与拉丁走 Inter。`ui-sans-serif`/`system-ui` 在前还是后差别不大，但别把 Inter 放到
      系统字后面：那样装了 Inter 的访客也看不到它。 */
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --radius-sm: calc(var(--radius) - 4px);
+  /* 只留实际用到的那两档（md / lg）：sm 与 xl 全仓没有引用，Tailwind 也不会为它们生成类。 */
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -170,7 +173,6 @@
   --color-chart-9: var(--chart-9);
   --color-ok: var(--ok);
   --color-ok-ink: var(--ok-ink);
-  --color-warn: var(--warn);
   --color-down: var(--down);
 }
 
@@ -225,13 +227,10 @@
    类名跟着控件自己的高度走（size-9 = 36px 等），一眼看得出撑完是多少：
      tap-9   36×36 → 44×44（顶栏那几枚图标、搜索方框）
      tap-8   32 高  → 44    （站名）
-     tap-10  40 高  → 44
      tap-y-6 24 高  → 44 高，横向不动 —— 密排的分段按钮之间别互相盖住。 */
 .tap { position: relative; }
 .tap::before { content: ""; position: absolute; border-radius: inherit; }
 .tap-9::before { inset: -4px; }
 .tap-8::before { inset: -6px; }
-.tap-10::before { inset: -2px; }
-.tap-y-9::before { inset: -4px 0; }
 .tap-y-6::before { inset: -10px 0; }
 

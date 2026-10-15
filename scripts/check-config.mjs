@@ -76,3 +76,37 @@ for (const file of ['public/favicon.svg', 'public/favicon.ico', 'public/apple-to
 }
 if (bad.length) throw new Error(`缓存键或早跑脚本对不上：\n  ${bad.join('\n  ')}`)
 console.log(`缓存键一致：${CACHES.map((c) => `${c.what} ${c.key}（${c.places.length} 处）`).join('、')}；早跑脚本在 index.html 里；站点图标两条静态引用与三份兜底文件都在`)
+
+// theme-color 的兜底色散在两处、必须逐字一致：index.html 那两份**静态**兜底（按系统明暗挑，
+// 首屏在 JS 起来之前就生效）与 src/App.tsx 里那一对运行时兜底（浏览器不认 oklch 时的退路）。
+// ★2026-10-15 审出来的漂移：亮色那份在 1.3.0 换暖石色系（--background 成 stone-50 #fafaf9）时
+//   只改了 App.tsx，index.html 这两行漏了 —— 差整整一个色阶，谁也不报错（真值另有运行时核对：
+//   tools/verify_appearance.mjs 断「App 挂上去的那份 meta == 页面实际底色」）。
+{
+  const bad2 = []
+  const metaColor = (scheme) => {
+    const at = html.indexOf('prefers-color-scheme: ' + scheme)
+    if (at < 0) return null
+    const start = html.lastIndexOf('content="', at) + 9
+    return start < 9 ? null : html.slice(start, html.indexOf('"', start))
+  }
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const at = app.indexOf('let color = dark ? "')
+  const pick = (from) => (from < 0 ? null : app.slice(from, app.indexOf('"', from)))
+  const appDark = at < 0 ? null : pick(at + 'let color = dark ? "'.length)
+  const appLight = at < 0 ? null : pick(app.indexOf(': "', at) + 3)
+  const pairs = [
+    ['index.html 亮色', metaColor('light'), 'App.tsx 亮色', appLight],
+    ['index.html 暗色', metaColor('dark'), 'App.tsx 暗色', appDark],
+  ]
+  for (const [nameA, a, nameB, b] of pairs) {
+    if (!/^#[0-9a-f]{6}$/.test(a ?? '') || !/^#[0-9a-f]{6}$/.test(b ?? '')) {
+      bad2.push(`${nameA}=${a} / ${nameB}=${b}：读不出兜底色（锚点变了？别当通过）`)
+    } else if (a !== b) {
+      bad2.push(`${nameA} 是 ${a}、${nameB} 是 ${b}（两边必须逐字一致）`)
+    }
+  }
+  if (bad2.length) throw new Error(`theme-color 兜底色对不上：\n  ${bad2.join('\n  ')}`)
+  if (appLight === appDark) throw new Error(`theme-color 的亮暗两份兜底不该是同一个色（都是 ${appLight}）`)
+  console.log(`theme-color 兜底色一致：亮 ${appLight}、暗 ${appDark}（index.html 静态两份 = App.tsx 运行时两份）`)
+}

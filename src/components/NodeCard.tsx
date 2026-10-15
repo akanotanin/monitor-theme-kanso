@@ -83,7 +83,8 @@ function loadPct(node: Node): number | null {
 }
 
 /**
- * 底注那行小字：`价格 ¥47.00/年 · 剩余 179 天`（有哪截写哪截，都没有就整条不占位）。
+ * 底注那行小字：`价格 ¥47.00/年 · 剩余 179 天`（有哪截写哪截；都没有就留空 ——
+ * 那一行**照样占位**，卡片高度不能因为有没有这段字而变，见下面 ⑥ 的 ★）。
  *
  * · 价格 0 不写：hub 后台那一格写着「留空或 0 为免费」，把「没填」也印成「免费」是在替站长断言。
  * · 到期优先用 hub 算好的 `expires_in`（按 hub 的时区算、在线机器还会顺延），只有旧 hub 没这个
@@ -144,17 +145,25 @@ export function Country({ node }: { node: Node }) {
  * ★卡片那一侧一处都不摊备注——「简约」这一档的口径（2026-10-03 站长定的），
  * 所以这个组件现在只被整页详情使用。
  */
-export function RemarkChips({ chips }: { chips: RemarkChip[] }) {
+export function RemarkChips({ chips, compact = false }: { chips: RemarkChip[]; compact?: boolean }) {
   return (
     <>
       {chips.map((c, i) => (
         <Badge
           key={i + "-" + c.text}
           variant={c.own ? "outline" : "secondary"}
-          className={"min-w-0 shrink font-normal " + (c.own ? "gap-1 text-muted-foreground" : "")}
+          // `compact`：卡片那一侧用（11px 字 + 行盒 14px + 无内边距 = 16px 高，正好塞满底注那行）；
+          // 整页详情照旧用默认档（那边一行摊一条、不差这几像素）。2026-10-15 站长要求
+          // 「备注缩小一些、且不改变卡片大小」。
+          // ★行盒给到 14px（leading-3.5）而不是 11px：11px 的行盒会把中文字形上下各裁掉半像素
+          //   （Inter 11px 的字体框 ascent+descent ≈ 13.3px）；py 用 [0px] 这种任意值压掉基类的
+          //   py-0.5（Tailwind 把任意值排在后面，可靠）。两者一凑，高度还是 16px。
+          className={"min-w-0 shrink font-normal " + (c.own ? "gap-1 text-muted-foreground " : "") + (compact ? "px-1.5 py-[0px] text-[11px] leading-3.5" : "")}
           title={c.own ? "仅自己可见：" + c.text : c.text}
         >
-          {c.own && <Lock className="size-3 shrink-0" aria-hidden />}
+          {/* 锁图标尺寸交给 Badge 基类的 `[&>svg]:size-3`（0,1,1）—— 挂在图标上的 size-2.5
+              是单类选择器（0,1,0），永远输、是死类（2026-10-15 审出来），别再写。 */}
+          {c.own && <Lock className="shrink-0" aria-hidden />}
           <span className="min-w-0 truncate">{c.text}</span>
         </Badge>
       ))}
@@ -173,13 +182,14 @@ function trafficFoot(node: Node) {
 /**
  * 列表里的那张卡片（本主题唯一的一档，2026-10-15 照站长给的参考站重排）。
  *
- * 从上到下六块（行距、字号按参考站校准过：整卡 ~510×214，那边是 508×209）：
+ * 从上到下六块（行距、字号按参考站校准过：整卡 ~510×216，那边是 508×209）。
  *   ① 身份行：旗子 + 名字（离线时右端一枚「已离线」徽章）；
  *   ② 一行灰字：系统 · 运行时间（四种处境的口径见 metaLine）；
  *   ③ 四个读数格：CPU / 内存 / 存储 / 负载（上面一条分隔线，见 Meter）；
  *   ④ 上传 / 下载：左右两栏，各带累计总量与实时速率，中间一道竖线；
  *   ⑤ 总流量：左边「已用 / 额度」、右边「流量重置」，下面一条全宽进度条；
- *   ⑥ 底注：价格 / 到期（左）＋ 备注小卡片（最多 CARD_CHIPS 枚，右）。
+ *   ⑥ 底注：价格 / 到期（左）＋ 备注小卡片（最多 CARD_CHIPS 枚，右）——**恒定占位**，
+ *      有备注没备注、有价格没价格，卡片都一样高（2026-10-15 站长定的）。
  *
  * 不含延迟那一块——那在整页详情里看（点卡片进去）。
  */
@@ -236,7 +246,10 @@ export function NodeCard({ node, onOpen, onWarm, terms, selected }: {
             别再去卡里找那枚点（点没了，`querySelector('[data-status]')` 会返回 null）。
           名字加粗一档（参考站是 600）。搜索命中处描色（Highlight：mark 不改变 textContent，
           既有文案断言照旧；没在搜时它原样返回，零影响）。 */}
-      <div className="flex min-w-0 items-center gap-2">
+      {/* ★定高 22px：名字行本身 20px（text-sm / leading-5），而「已离线」徽章 22px（text-xs 16 + py-0.5 4
+          + border 2）—— 不定高的话，掉线那台就比邻居高 2px。定高之后徽章照旧居中，
+          有/无徽章一律 22px（2026-10-15 站长要求「卡片大小与备注无关」时顺手一起钉平）。 */}
+      <div className="flex h-[22px] min-w-0 items-center gap-2">
         <Country node={node} />
         <h3 className="min-w-0 flex-1 truncate text-sm font-semibold leading-5 tracking-tight"><TextHighlight text={node.name} terms={terms} /></h3>
         {/* 徽章只给「接入过、现在掉线」的机器：从未接入的卡片下面那行说明已经说清了，
@@ -321,18 +334,17 @@ export function NodeCard({ node, onOpen, onWarm, terms, selected }: {
             />
           </div>
 
-          {/* ⑥ 底注：价格 / 到期在左、备注小卡片在右；两截都没有就整行不占位。
+          {/* ⑥ 底注：价格 / 到期在左、备注小卡片在右。★这一行**恒定占位**（见下面那条 ★ 注释）。
               `data-remark="card"` 是护栏的锚点（与整页详情那一块的 `data-remark-block` 区分开）。 */}
-          {(note || chips.length > 0) && (
-            <div className="mt-1.5 flex min-w-0 items-center justify-between gap-2">
-              <span className="tnum min-w-0 truncate text-[11px] leading-4 text-muted-foreground">{note}</span>
-              {chips.length > 0 && (
-                <span data-remark="card" className="flex min-w-0 shrink items-center justify-end gap-1">
-                  <RemarkChips chips={chips} />
-                </span>
-              )}
-            </div>
-          )}
+          {/* ★这一行**恒定占位**（h-4 = 16px）：有没有备注、有没有价格，卡片都一样高
+              —— 2026-10-15 站长要求「无备注 / 有备注两种情况下卡片大小相同」。
+              小卡片也收成紧凑档（15px），塞得进这 16px，不再把整卡撑高 6px。 */}
+          <div className="mt-1.5 flex h-4 min-w-0 items-center justify-between gap-2">
+            <span className="tnum min-w-0 truncate text-[11px] leading-4 text-muted-foreground">{note}</span>
+            <span data-remark="card" className="flex min-w-0 shrink items-center justify-end gap-1">
+              <RemarkChips chips={chips} compact />
+            </span>
+          </div>
         </>
       ) : (
         /* Never connected: nothing to plot, so the card stays short rather than

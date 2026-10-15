@@ -7,7 +7,7 @@
 //      负载的读数是一分钟均值、条按「满载的几成」（load / 核数）；
 //   ④ 上传 / 下载两栏（左上传右下载、中间竖线）：累计总量 + 实时速率；
 //   ⑤ 总流量：左「已用 / 额度」、右「流量重置：每月 N 日」（无额度写 N/A），下面一条全宽带；
-//   ⑥ 底注：价格 / 到期在左、备注小卡片在右（**最多 3 枚** —— 2026-10-15 起卡片这一侧也摊备注，
+//   ⑥ 底注：价格 / 到期在左、备注小卡片在右（**最多 3 枚**、**恒定占位**：有备注没备注卡片等高 —— 2026-10-15 起卡片这一侧也摊备注，
 //      与从前「一处都不摊」的口径不同，底座那一行容不下更多）。
 //
 // 夹具六台：① 在线全字段 ② 掉线（有历史、读数写 —）③ 从未接入（那行说明）④ 连上但没上报
@@ -253,7 +253,7 @@ check('全宽进度条按 已用 / 额度 上色（8.38 / 500 ≈ 1.68%）',
 console.log('\n⑥ 底注：价格 / 到期 + 备注小卡片')
 check('价格与到期写成 `价格 ¥349.00/年 · 剩余 299 天`',
   one?.note === '价格 ¥349.00/年 · 剩余 299 天', String(one?.note))
-check('没填价格、也没有到期日的那台：底注不占位（连字都没有）', unlim?.note === null, String(unlim?.note))
+check('没填价格、也没有到期日的那台：底注那行不写字（行仍恒定占位，卡片照样等高）', unlim?.note === null, String(unlim?.note))
 check('★ 备注小卡片最多 3 枚（夹具写了 4 枚：甲 / 乙 / 丙 / 丁）',
   JSON.stringify(many?.chips) === JSON.stringify(['甲', '乙', '丙']) && many.chips.length === 3, JSON.stringify(many?.chips))
 check('在线那台也摊备注（一枚「优化线路」，底注右侧与价格同行）',
@@ -272,15 +272,25 @@ check('备注小卡片与底注同一行（右侧、不与价格那截重叠）'
 // ⑦ 从未接入 + 版面
 console.log('\n⑦ 从未接入与版面')
 check('从未接入那台：只有身份行 + 一行说明，没有读数区', never?.hint === true && never.cells === null, `hint=${never?.hint}`)
-// 底注「有哪截写哪截」：没有价格 / 到期 / 备注的那台整行不占位，所以它比邻居矮；有底注的那几台
-// 高度几乎一致 —— 差出来的几像素来自两处：备注小卡片自己 22px 比那行小字高一档（+6）、
-// 离线徽章比名字行高 2px（+2）。
+// ★底注**恒定占位**（2026-10-15 站长定的新口径）：有备注 / 没备注、有价格 / 没价格，
+// 卡片一律等高 —— 从前那几像素差来自两处：备注小卡片自己 22px 比底注那行小字高一档（+6），
+// 离线徽章又比名字行高 2px（+2）。现在小卡片收成 15px 紧凑档、身份行定高 22px，两处都钉平。
+// 从未接入那台（没有读数区）本来就是另一种卡型，不参与这条判据。
 {
-  const withFoot = cards.filter((c) => c.cells && (c.note || c.chips.length > 0)).map((c) => c.box.h)
-  const withoutFoot = cards.filter((c) => c.cells && !c.note && !c.chips.length).map((c) => c.box.h)
-  check('底注有哪截写哪截：没底注的那台更矮，有底注的几台高度几乎一致（相差 ≤ 8px）',
-    Math.max(...withFoot) - Math.min(...withFoot) <= 8 && withoutFoot.length > 0 && Math.max(...withoutFoot) < Math.min(...withFoot),
+  const hs = cards.filter((c) => c.cells).map((c) => c.box.h)
+  check('★ 有备注 / 无备注 / 没价格 / 掉线（带徽章）几种卡片高度完全相同',
+    hs.length >= 4 && new Set(hs).size === 1,
     JSON.stringify(cards.map((c) => `${c.name}:${c.box.h}`)))
+}
+{
+  // 找不到元素要**报红**（探针返回 -1），并加下界 —— 原来 `b ? h : 0` 配 `<= 16`，
+  // 属性一改名或夹具里没了备注就静默通过（2026-10-15 审出来）。
+  const chipH = await js(`(() => {
+    const b = document.querySelector('[data-remark="card"] [data-slot="badge"]')
+    return b ? Math.round(b.getBoundingClientRect().height * 10) / 10 : -1
+  })()`)
+  check('★ 备注小卡片收成紧凑档（高 10–16px：塞得进底注那行，不把卡片撑高）',
+    typeof chipH === 'number' && chipH >= 10 && chipH <= 16, `实测 ${chipH}px`)
 }
 check('★ 列表是一行两张宽卡（参考站口径，1440 上两列）', cards[0]?.listCols === 2, `listCols=${cards[0]?.listCols}`)
 check('★ 卡片是宽扁的（宽 ≥ 2×高，参考站 508×209 ≈ 2.43:1）',

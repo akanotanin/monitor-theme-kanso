@@ -228,7 +228,14 @@
      tap-9   36×36 → 44×44（顶栏那几枚图标、搜索方框）
      tap-8   32 高  → 44    （站名）
      tap-y-6 24 高  → 44 高，横向不动 —— 密排的分段按钮之间别互相盖住。 */
+/* `.tap` 与 Tailwind 的 `.absolute` 都是单类选择器（0,1,0），而 `.tap` 写在 Tailwind 层之后，
+   靠顺序裁决必输 —— 延迟图右上角那枚「重置」因此掉回文档流、落在图下方左缘（2026-10-15
+   护栏里量到它的 y 比图表容器顶低 700+px）。双类选择器（0,2,0）与顺序无关，一次钉死。 */
+/* ↑ `.tap` 的 position: relative 是下面 `.tap::before`（那圈撑到 44px 的隐形命中区）的
+   定位基准 —— 补 `.tap.absolute` 时若把它整行替换掉，12 条命中区断言会当场掉到 1×1
+   （2026-10-15 踩过）。两条规则各司其职，都别动。 */
 .tap { position: relative; }
+.tap.absolute { position: absolute; }
 .tap::before { content: ""; position: absolute; border-radius: inherit; }
 .tap-9::before { inset: -4px; }
 .tap-8::before { inset: -6px; }

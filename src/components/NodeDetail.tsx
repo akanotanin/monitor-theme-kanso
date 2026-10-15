@@ -211,10 +211,7 @@ export function NodeDetail({ node, historyDays, detailRemarks = true }: {
   // the connection the agents report through. Rendered as an empty window, a 503
   // would misdirect the reader.
   const [failed, setFailed] = useState("")
-  // Where the brush has been dragged, so the axis reticks for the visible span
-  // rather than retaining the whole window's ticks.
-  const [zoom, setZoom] = useState<[number, number] | null>(null)
-  // Where the chart begins on screen, so its height can occupy the remainder.
+    // Where the chart begins on screen, so its height can occupy the remainder.
   const [chartTop, setChartTop] = useState(0)
 
   useEffect(() => {
@@ -223,8 +220,6 @@ export function NodeDetail({ node, historyDays, detailRemarks = true }: {
     // flight.
     // oxlint-disable-next-line react/set-state-in-effect
     setData(null)
-    // oxlint-disable-next-line react/set-state-in-effect
-    setZoom(null)
     // oxlint-disable-next-line react/set-state-in-effect
     setFailed("")
     // What this screen can resolve, in device pixels, which is the unit the line
@@ -387,11 +382,11 @@ export function NodeDetail({ node, historyDays, detailRemarks = true }: {
             .filter(Boolean)
             .join(" · ")}
         />
-        {/* 连接数：hub 的实时上报里带着 TCP / UDP 连接条数（`metrics.tcp / udp`，2026-10-14
-            应站长要求加到详情页）。离线机器 `metrics` 是 null，两格随 Fact 的既有口径一起隐身
+        {/* 连接数：hub 的实时上报里带着 TCP / UDP 连接条数（`metrics.tcp / udp`）。
+            ★2026-10-15 站长要求合成**一格**、写法照上面那格「内存 / 硬盘」：标签 `TCP / UDP 连接`、
+            值 `17 / 3`。离线机器 `metrics` 是 null，这一格随 Fact 的既有口径一起隐身
             ——「没有这个值」本来就不该占格子。 */}
-        <Fact label="TCP 连接" value={m ? m.tcp : null} />
-        <Fact label="UDP 连接" value={m ? m.udp : null} />
+        <Fact label="TCP / UDP 连接" value={m ? `${m.tcp} / ${m.udp}` : null} />
         <Fact label="今日流量" value={`↓ ${bytes(node.day_rx)} · ↑ ${bytes(node.day_tx)}`} />
         {/* 最后一格是「在线时间」：取代原先标题行上那枚状态徽章。它顶掉的是「续费」
             那一格——公开页的访客关心这台机器还活着多久，价格与到期在后台看。 */}
@@ -485,6 +480,7 @@ export function NodeDetail({ node, historyDays, detailRemarks = true }: {
                 <p className="py-8 text-center text-sm">没有选中任何探测</p>
               ) : (
                 <TimeChart
+                  wheelZoom
                   rows={pingRows}
                   series={[
                     // 区间（band）只在屏上只有一个探测时画：四个叠在一起会糊成一片，还会把轴拉宽
@@ -509,11 +505,8 @@ export function NodeDetail({ node, historyDays, detailRemarks = true }: {
                   domain="auto"
                   unit="ms"
                   left={52}
-                  from={Math.min(zoom?.[0] ?? 0, pingRows.length - 1)}
-                  to={Math.min(zoom?.[1] ?? pingRows.length - 1, pingRows.length - 1)}
-                  // 原来 recharts 的 Brush（22px 高的拖两端把手）换成「在图上横向拖选一段」+
-                  // 一枚「重置」：手机上那对手指头太细，而且这样代码少一半。
-                  onZoom={(from, to) => setZoom([from, to])}
+                  // 缩放与对位都归图表自己管（滚轮纵向缩放 + 左键拖着线平移，见 Chart 的
+                  // `wheelZoom`）：原来那套「横向拖选一段放大」2026-10-15 按站长的要求去掉了。
                   label="节点延迟走势"
                   renderTooltip={(row) => (
                     <PingTooltip active label={row.ts} rowByTs={rowByTs} probes={shownProbes} smooth={smooth} style={style} />

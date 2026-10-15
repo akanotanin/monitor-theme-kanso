@@ -4,7 +4,7 @@
 //
 // Nothing imports it, so the bundle never includes it.
 import {
-  axisBytes, axisTop, bytes, CYCLE_SHORT, CYCLES, cpuName, daysUntil, despike, osName, pair, percent, quarters, rate, timeTicks, uptime,
+  axisBytes, axisTop, bytes, CYCLE_SHORT, CYCLES, cpuName, daysUntil, despike, innerTicks, osName, pair, percent, quarters, rate, timeTicks, uptime, zoomSpan,
 } from "./format.ts"
 
 let failed = 0
@@ -161,6 +161,50 @@ eq(CYCLE_SHORT.monthly, "月", "月付短写法")
 eq(CYCLE_SHORT.yearly, "年", "年付短写法")
 eq(CYCLE_SHORT.once, "一次性", "一次性不缩")
 eq(Object.keys(CYCLE_SHORT).sort(), Object.keys(CYCLES).sort(), "短写法与 CYCLES 是同一组键")
+
+// innerTicks（滚轮纵缩那一档的刻度）：**一枚都不许落在 [lo, hi] 外面**。
+// 2026-10-15 站长拿截图报「延迟跑到外面」：循环上界原来写 `hi + step / 2`，会在量程顶端
+// 之外多吐一枚刻度，它的网格线与标签就画到绘图区上面去了。下面第三例就是当时那类数据。
+{
+  const all = (lo: number, hi: number) => {
+    const t = innerTicks(lo, hi)
+    return t.length > 0 && t.every((v) => v >= lo - 1e-9 && v <= hi + 1e-9)
+  }
+  eq(innerTicks(0, 1000), [0, 250, 500, 750, 1000], "整段量程：0/250/500/750/1000")
+  eq(innerTicks(13.2, 38.2), [15, 20, 25, 30, 35], "窄量程只挑范围内的整齐数（首档只落得下 2 枚就退一档）")
+  eq(all(280, 281.3), true, "压线窄量程：不许吐 281.5 那种越界刻度")
+  eq(all(27.95, 52.95), true, "滚轮缩放后的任意边界：刻度全在范围内")
+  eq(all(0, 1), true, "1ms 下限量程：0/0.25/0.5/0.75/1")
+  eq(innerTicks(3, 3), [], "零跨度：不给刻度（免得画出一堆重叠）")
+}
+
+// zoomSpan（滚轮纵缩那一步）：亚毫秒量程不许被「放大」、锚点比例不许被挪、两端夹子的行为。
+// 2026-10-15 审出来的死区就在这里：旧版跨度下限固定 1ms，比自动量程还宽时会把状态映射回自己。
+{
+  const R = (lo: number, hi: number, anchor: number, ratio: number, factor: number, floor: number, cap = 1e5) =>
+    zoomSpan({ lo, hi, anchor, ratio, factor, floor, cap })
+  const spanOf = (r: { lo: number; hi: number }) => r.hi - r.lo
+  // 正常量程（25–50ms、下限 1ms）：收窄到 1ms 就停，且锚点钉住
+  const a1 = R(25, 50, 33, 0.4, 0.02, 1)
+  eq(Math.abs(spanOf(a1) - 1) < 1e-9, true, `收窄到 1ms 下限即停（跨度 ${spanOf(a1)}）`)
+  eq(Math.abs(a1.hi - 33 - 0.6) < 1e-9 && Math.abs(33 - a1.lo - 0.4) < 1e-9, true, "夹到下限时按锚点比例收：锚点在框里仍是 40%")
+  const a2 = R(25, 50, 33, 0.4, 2, 1)
+  eq(spanOf(a2), 50, "外滚 2×：25 → 50")
+  // 亚毫秒量程（1.1–1.5ms、下限 min(1, 0.4/4)=0.1）：滚一格必须**继续收窄**，不许反向放大
+  const b1 = R(1.1, 1.5, 1.3, 0.5, 0.835, 0.1)
+  eq(spanOf(b1) < 0.4 && spanOf(b1) > 0.3, true, `亚毫秒收窄：0.4 → ${spanOf(b1).toFixed(3)}（旧版会放大到 1.0）`)
+  // 下沿贴 0 的卡死现场：外滚必须能出去，跨度只会变大
+  const b2 = R(0, 0.675, 0.27, 0.75, 1.148, 0.1)
+  eq(spanOf(b2) > 0.675, true, `贴 0 外滚：${spanOf(b2).toFixed(3)}（旧版是原地不动）`)
+  // 两端夹子：下沿不越 0、顶端不越 cap
+  const c1 = R(0, 0.675, 0.1, 0.9, 0.5, 0.1)
+  eq(c1.lo >= 0, true, "下沿不越 0")
+  const c2 = R(900, 1000, 500000, 0.5, 4, 1, 1000)
+  eq(c2.hi <= 1000 && spanOf(c2) > 0, true, "顶端不越 cap、跨度不为负")
+  // 比现在还窄的量程不许被放大（floor 取 min(floor, span)）
+  const d1 = R(0, 0.02, 0.01, 0.5, 4, 1)
+  eq(spanOf(d1) > 0.02, true, `比下限还窄的量程：外滚照样变大、不被地板卡住（${spanOf(d1).toFixed(3)}）`)
+}
 
 if (failed) {
   console.error(`\n${failed} 项不通过`)

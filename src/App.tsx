@@ -51,9 +51,9 @@ const NodeDetail = lazy(loadDetail)
  *      不能无条件画（没备注的机器会反过来高出 38px）；（2026-10-06 修）
  *   ② **四张图是页签块的兄弟、不是孩子** —— 嵌进去的话，页签与图之间那 16px 变成 8px，
  *      整页少 8px。①+② = 22+16+8 = 46px，正是当年那 46px 的差额；（2026-10-06 修）
- *   ③ **TCP/UDP 连接数两格**（2026-10-15 修）—— 详情页 2026-10-14 加了这两格（真实页 8 格），
- *      骨架还画 6 格：桌面三列多出一行（+48px）、手机一列多出两行（+96px）。判法与真实页
- *      同源（那边 `const m = node.metrics`）：`metrics` 在才画这两格（离线机器两格隐身、
+ *   ③ **TCP / UDP 连接那一格**（2026-10-15 修）—— 详情页 2026-10-14 加了连接数、2026-10-15
+ *      合成一格（真实页 7 格），骨架还画 6 格：桌面三列多出一行（+48px）、手机一列多出两行（+96px）。
+ *      判法与真实页同源（那边 `const m = node.metrics`）：`metrics` 在才画这一格（离线机器它隐身、
  *      真实页也是 6 格），所以由调用方按 `node.metrics` 传入，照 ① 的同一手法。
  */
 function DetailSkeleton({ hasRemarks = false, hasConnections = false }: { hasRemarks?: boolean; hasConnections?: boolean }) {
@@ -64,7 +64,7 @@ function DetailSkeleton({ hasRemarks = false, hasConnections = false }: { hasRem
         <Skeleton className="h-7 w-44" />
       </div>
       <div className="grid gap-x-6 gap-y-3 md:grid-cols-2 lg:grid-cols-3">
-        {(hasConnections ? [0, 1, 2, 3, 4, 5, 6, 7] : [0, 1, 2, 3, 4, 5]).map((i) => (
+        {(hasConnections ? [0, 1, 2, 3, 4, 5, 6] : [0, 1, 2, 3, 4, 5]).map((i) => (
           <div key={i} className="min-w-0">
             <Skeleton className="h-4 w-12" />
             <Skeleton className="h-5 w-28" />
@@ -559,11 +559,11 @@ export default function App() {
         ) : !nodes ? (
           // 还在等节点列表：骨架与卡片网格同一版式。
           // 高度跟着卡片来 —— 2026-10-15 卡片改成参考站那一套（身份行 + 系统行 + 四个读数格 +
-          // 上传下载 + 总流量 + 底注）、并把行距收到参考站那一档之后是 231px（1440 视口两列，
-          // 见 tools/verify_card_form）。
+          // 上传下载 + 总流量 + 底注）之后，六种卡片一律 510×217.5（底注行恒定占位），
+          // 骨架取 218 去贴（见 tools/verify_card_form）。
           <div className="grid gap-3 md:grid-cols-2">
             {[0, 1, 2].map((i) => (
-              <Skeleton key={i} className="h-[222px] rounded-2xl" />
+              <Skeleton key={i} className="h-[218px] rounded-2xl" />
             ))}
           </div>
         ) : (

@@ -1,0 +1,205 @@
+/* Scan this app's own source and nothing else. Tailwind's automatic detection
+   walks the whole repository, turning a word in a Rust file or a document into a
+   utility class in the shipped stylesheet: `.filter` and `.transform` were
+   here because api.rs calls `.filter(...)`. Worse than the wasted bytes, it
+   made the build depend on files that have nothing to do with it -- adding an
+   unrelated workflow changed the CSS, and with it the content hash of every
+   asset. */
+@import "tailwindcss" source(none);
+@source "../index.html";
+@source "../src";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --radius: 0.625rem;
+  /* 页面底色：参考站是 oklch(0.985) 那一档浅灰，卡片才「浮」得出来。原来两面都是纯白，
+     卡片只能靠描边+阴影区分，整页看着发闷。 */
+  --background: oklch(0.985 0 0);
+  --foreground: oklch(0.18 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0 0);
+  --primary: oklch(0.18 0 0);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.96 0 0);
+  --secondary-foreground: oklch(0.18 0 0);
+  --muted: oklch(0.967 0.001 286.375);
+  --muted-foreground: oklch(0.52 0 0);
+  --accent: oklch(0.955 0 0);
+  --accent-foreground: oklch(0.18 0 0);
+  --destructive: oklch(0.3 0 0);
+  /* 描边：参考站是这一档冷灰（带一点点蓝），比纯中性灰更像「卡片的一道线」。 */
+  --border: oklch(0.92 0.004 286.32);
+  --input: oklch(0.92 0.004 286.32);
+  --ring: oklch(0.62 0 0);
+  /* 九色调色板：曲线要用几组同时可分辨的线，单色阶在三组以上就只剩深浅，
+     于是给延迟曲线一份真正的色相环（1-9 依次是蓝 / 橙 / 青 / 紫 / 红 / 绿 /
+     蓝青 / 黄 / 品红）。亮色下压亮度保证白底可读，深色下抬亮度，色相不变，
+     所以同一台机器在两种主题下是同一种颜色。 */
+  --chart-1: oklch(0.58 0.17 250);
+  --chart-2: oklch(0.66 0.16 45);
+  --chart-3: oklch(0.6 0.13 190);
+  --chart-4: oklch(0.55 0.18 295);
+  --chart-5: oklch(0.58 0.19 20);
+  --chart-6: oklch(0.58 0.15 150);
+  --chart-7: oklch(0.6 0.12 220);
+  --chart-8: oklch(0.66 0.14 70);
+  --chart-9: oklch(0.58 0.18 335);
+  /* 进度条按"越满越危险"上色，所以这里有真正的绿与琥珀：单色阶表达不了严重度。 */
+  --ok: oklch(0.6 0.15 155);
+  --warn: oklch(0.62 0.15 70);
+}
+
+.dark {
+  /* ── 暗色的文字与底色：对着上游实测过的那一套调过 ─────────────────────────────
+     站长 2026-10-06 反馈「全暗模式下字的颜色有些刺眼」。把原站 :root 里那几档取出来算成
+     OKLCH，问题就很清楚 —— 它不是"亮一点/暗一点"，而是**对比度差了一档，而且它是暖的**：
+
+       原站  void #15130f = oklch(0.188 0.0085 84.6)   ← 暖的近黑（比本站更亮一点）
+             ink  #ddd6c8 = oklch(0.878 0.020 84.6)   ← 暖的米白，不是纯白
+             ink-dim       = oklch(0.752 0.027 87)    ← 次级文字比本站的还亮
+             正文/底 = 12.83:1，主次两级亮度差 0.125
+       本站（改前）正文 oklch(0.98 0 0) / 底 0.145 → **18.6:1**，主次亮度差 0.28
+
+     纯白 0.98 配近黑底是"能看清"但"盯着累"：对比度 18.6:1 远超需要的量，且中性白在暖色
+     的机器读数里显得生硬。改法是两条：**把正文压到原站那一档（≈12.5:1）**、**整体偏暖一档
+     （H≈85°、C≈0.012~0.018）**，同时把次级文字提亮，让主次两级收拢到原站那种 0.12 左右。
+     底色跟着暖一点点、亮一点点（0.145 → 0.155），免得"暖字配冷底"看着脏。
+
+     改完的实测（卡片底 vs 文字）：正文 **12.72:1**、弱化文字 **8.21:1**、主次亮度差 0.130
+     （原站 12.83:1 / 8.41:1 / 0.125，基本重合）—— 仍远高于 WCAG AA 的 4.5:1，只是不再刺眼。
+     亮色一套**没动**（站长只提了全暗模式；亮色那套是 0.18/0.985）。 */
+  --background: oklch(0.155 0.004 85);
+  --foreground: oklch(0.885 0.012 85);
+  /* 卡片与"抬升面"各比改前抬 0.01：底色 0.145→0.155 之后，原来那两档间距会被压掉 9%
+     （0.055→0.050），卡片边界看着就"塌"了一点。补回去仍是改前的 0.055 / 0.07。 */
+  --card: oklch(0.21 0.004 85);
+  --card-foreground: oklch(0.885 0.012 85);
+  --popover: oklch(0.21 0.004 85);
+  --popover-foreground: oklch(0.885 0.012 85);
+  --primary: oklch(0.885 0.012 85);
+  --primary-foreground: oklch(0.21 0.004 85);
+  --secondary: oklch(0.28 0.005 85);
+  --secondary-foreground: oklch(0.885 0.012 85);
+  --muted: oklch(0.28 0.005 85);
+  --muted-foreground: oklch(0.755 0.018 85);
+  --accent: oklch(0.28 0.005 85);
+  --accent-foreground: oklch(0.885 0.012 85);
+  --destructive: oklch(0.885 0.012 85);
+  /* 描边也跟着换成那支暖墨：纯白 12% 在暖色文字旁边会显出一道冷边。 */
+  --border: oklch(0.885 0.012 85 / 13%);
+  --input: oklch(0.885 0.012 85 / 16%);
+  --ring: oklch(0.6 0.008 85);
+  /* 与亮色同一份色相，只抬亮度：深色底上压暗的线会糊在一起。 */
+  --chart-1: oklch(0.72 0.15 250);
+  --chart-2: oklch(0.78 0.14 55);
+  --chart-3: oklch(0.74 0.12 190);
+  --chart-4: oklch(0.7 0.16 295);
+  --chart-5: oklch(0.7 0.17 20);
+  --chart-6: oklch(0.74 0.14 150);
+  --chart-7: oklch(0.74 0.11 220);
+  --chart-8: oklch(0.8 0.13 75);
+  --chart-9: oklch(0.72 0.16 335);
+  --ok: oklch(0.74 0.14 155);
+  --warn: oklch(0.8 0.13 75);
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
+  --color-chart-9: var(--chart-9);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  /* Reserve the scrollbar's width on every page: without it, leaving a route
+     whose content exceeds the fold widens the page. */
+  html { scrollbar-gutter: stable; }
+  body { @apply bg-background text-foreground; }
+}
+
+/* Tabular figures keep live numbers from shifting as they update. */
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* 页脚署名（右下角那行）：比正文的弱化色再淡一档，只作署名，不跟页面里的读数抢注意力；
+   「Kanso」那截是本主题的源码仓库链接（地址见 App.tsx 的 REPO_URL），悬停才出下划线。 */
+/* 顶栏那条图标带（.header-tools）：装不下时横向滑动，与分组标签同一套做法。
+   滑动条藏起来 —— 它长在 sticky 顶栏里、又只在窄窗口才出现，露出来就是一条横杠；
+   「还能滑」的提示由露一半的那枚图标给（与分组标签行一致）。 */
+.header-tools { scrollbar-width: none; }
+.header-tools::-webkit-scrollbar { display: none; }
+
+.theme-credit {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.6;
+  opacity: 0.62;
+}
+.theme-credit a { color: inherit; text-decoration: none; }
+.theme-credit a:hover { text-decoration: underline; }
+
+/* 顶栏那个搜索框（src/components/SearchBox.tsx）：
+   ① `type="search"` 在 WebKit 里自带一枚小叉，关掉它 —— 框里已经有一枚自己的清空按钮，
+      两个长得差不多、做同一件事的按钮并排只会让人犹豫点哪个；
+   ② **清空那枚只在框长开着（有焦点）时出现**：收起时那一格只有 36px，放大镜已经占满，
+      再挤一枚叉就成了「两枚图标叠在一起」。展开／收起的动效由 `transition-all` 负责。 */
+.search-input::-webkit-search-cancel-button,
+.search-input::-webkit-search-decoration { -webkit-appearance: none; appearance: none; }
+/* ★ position: absolute 必须写在这里（而不是只写在组件的类名里）：组件类名里的 `absolute`
+   是 Tailwind 的分层工具类，而 `.tap` 的 `position: relative`（本文件、未分层）在级联顺序上
+   压过它 —— 按钮于是落回 flex 流、被满宽的 input 顶到容器右缘之外（2026-10-12 站长实拍：
+   清空按钮右沿超出输入框 16px，看起来贴在边框外/角上）。未分层对未分层按特异性裁决：
+   `.search-field .search-clear`（0,2,0）> `.tap`（0,1,0) ✓。垂直居中交给容器的
+   `align-items: center` 对绝对定位子元素的 static position（挺标准的做法，Chrome/Safari/FF 都按规范实现）。 */
+.search-field .search-clear { display: none; position: absolute; }
+.search-field:focus-within .search-clear { display: grid; }
+
+/* 触屏命中区：**外观一点不动，只把可点范围往外撑**。
+   手指比鼠标粗 —— Apple 的通行线是 44×44，WCAG 2.2 的硬线（2.5.8）是 24×24。
+   撑出来的那圈是 ::before，透明、不参与布局，所以排版、间距、视觉都不受影响；
+   命中测试时它算作所属元素（`document.elementFromPoint` 返回的是宿主元素）。
+   类名跟着控件自己的高度走（size-9 = 36px 等），一眼看得出撑完是多少：
+     tap-9   36×36 → 44×44（顶栏那几枚图标、搜索方框）
+     tap-8   32 高  → 44    （站名）
+     tap-10  40 高  → 44
+     tap-y-6 24 高  → 44 高，横向不动 —— 密排的分段按钮之间别互相盖住。 */
+.tap { position: relative; }
+.tap::before { content: ""; position: absolute; border-radius: inherit; }
+.tap-9::before { inset: -4px; }
+.tap-8::before { inset: -6px; }
+.tap-10::before { inset: -2px; }
+.tap-y-9::before { inset: -4px 0; }
+.tap-y-6::before { inset: -10px 0; }
+

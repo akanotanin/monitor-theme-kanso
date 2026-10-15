@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 手机浏览器那一圈（地址栏 / 状态栏）的配色。这两份是**静态兜底**、按系统明暗挑；
+         页面起来之后 App 的 useTheme 会摘掉它们、换成一份跟着**页面实际明暗**走的
+         （站长的「随北京时间自动」在夜里与系统相反时，只有那一步才对得上）。
+         色值与 index.css 的 --background 同一套：亮 oklch(0.985 0 0)≈#fafafa、暗 oklch(0.155 0.004 85)≈#0d0c0a。 -->
+    <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0d0c0a" media="(prefers-color-scheme: dark)" />
+    <!-- 站点图标：hub 1.4.0 起由面板「设置 → 站点图标」管 —— 站长选好之后 `/favicon.svg`、
+         `/favicon.ico`、`/apple-touch-icon.png` 这几条路径都由 hub 回答（它还会给 index.html 里
+         这两个地址带上内容版本号），换主题也保留。下面两行是**主题自带那份**的地址：hub 上没设
+         图标时按这两个路径回落到主题目录里的 `public/favicon.svg` 与 `public/apple-touch-icon.png`
+         （同一枚站标生成，见 tools/make_icons.py），顶栏那枚圆标也走同一个地址。
+         所以这里不再需要「早跑脚本改写 <link>」那一步：地址是固定的，换图由 hub 的版本号负责。 -->
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- 标签页标题的占位值：静态 HTML 不可能知道站长把站名改成了什么，真站名要到 JS 里才有。
+         上游这里就是 "Monitor"，保持原样——换成本主题的名字只会让刷新时多闪一跳。 -->
+    <title>Monitor</title>
+    <!-- 缓存里的站名：**必须内联**。public/title-probe.js 是独立文件，访客要多等一次往返
+         （线上实测 164ms：740ms 发出、1161ms 才到）才轮到它改标题，那段时间标签页上就是上面
+         那行占位值——站长报的「先出来 Monitor 再出来站名」就是这个。这一段就地读 localStorage，
+         标签页第一帧就是站名。站点前面若有 CSP 会挡掉内联脚本，下面那条外部文件照旧补上
+         （退回原来的表现，不会坏）。键与 src/App.tsx 的 TITLE_CACHE_KEY 一致。 -->
+    <script>
+      ;(function () {
+        var name = null
+        try {
+          name = localStorage.getItem("kanso:site_name")
+        } catch (e) {
+          // 隐私模式 / 存储被禁用：没有缓存可用，占位值等下面那条外部文件。
+        }
+        if (name) {
+          document.title = name
+          window.__titleProbeSource = "inline"
+        }
+      })()
+    </script>
+    <!-- 标题的头一步（冷启动时早问一次 /api/me，兼内联被 CSP 挡掉时的兜底）：public/title-probe.js，
+         与 src/App.tsx 里的 TITLE_CACHE_KEY 共用一个键。
+         ★ 必须 async（2026-10-09 实测后从普通脚本改过来）。普通脚本会**阻塞解析**：入口模块要等它
+         下载并执行完才能开始，探针文件被人为拖到 300ms 时，首绘从 ~130ms 推迟到 ~396ms。defer
+         也好不了——defer 队列按文档序执行，排在前面的它一样把后面的模块拖住（实测 404ms）。
+         async 完全不挡路：文件到得晚，只是标题晚一点补上；「App 已经接管就别再动标题」这个判定
+         探针自己带着（window.__titleOwned，见 title-probe.js 里缓存分支的守卫）。 -->
+    <script src="/title-probe.js" async></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

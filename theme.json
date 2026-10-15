@@ -2,7 +2,7 @@
   "name": "kanso",
   "short": "kanso",
   "description": "自家制の极简探针（Monitor）主题：单档宽卡，读数、流量与价格一眼看全。",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "author": "akanotanin",
   "url": "https://github.com/akanotanin/monitor-theme-kanso",
   "config": [

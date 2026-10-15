@@ -129,7 +129,9 @@ const probe = `(() => {
   const style = (el) => { const s = getComputedStyle(el); return { size: s.fontSize, weight: s.fontWeight, color: s.color } }
   return JSON.stringify(cards.map((c) => {
     const m = c.querySelector('[data-metrics]')
-    const dot = c.querySelector('[data-status]')
+    // ★状态锚点 2026-10-15 起挂在**卡根**上（那枚 8px 的点按站长要求去掉了）：卡里再冒出
+    //   [data-status] 元素＝点又回来了，下面当场报出来。
+    const dotInside = !!c.querySelector('[data-status]')
     const net = c.querySelector('[data-net]')
     const cells = m ? [...m.children].map((el) => {
       const divs = el.querySelectorAll('div')
@@ -149,7 +151,10 @@ const probe = `(() => {
     return {
       name: c.querySelector('h3').textContent,
       box: box(c),
-      dot: dot ? { status: dot.dataset.status, size: box(dot), radius: getComputedStyle(dot).borderRadius, color: paint(dot, getComputedStyle(c).backgroundColor) } : null,
+      status: c.dataset.status ?? null,
+      dotInside,
+      // 身份行的第一个孩子应当是**旗子**（点去掉后不该有别的东西顶在最前）
+      rowFirst: c.firstElementChild?.firstElementChild?.tagName.toLowerCase() ?? null,
       badge: (() => { const b = [...c.querySelectorAll('[data-slot="badge"]')].find((x) => x.textContent.trim() === '已离线'); return b ? { text: b.textContent.trim(), color: paint(b, getComputedStyle(c).backgroundColor) } : null })(),
       meta: c.querySelector('p')?.textContent ?? null,
       cells,
@@ -180,17 +185,14 @@ const idle = byName('刚连上四号'), many = byName('备注五号'), unlim = b
 console.log(`闸门：六张卡片都渲染出来了 ${cards.length === 6 ? '✓' : '✗ ' + cards.length}`)
 check('① 六张卡片（三种处境 + 两种边角）都在', cards.length === 6, cards.map((c) => c.name).join(' / '))
 
-// ① 状态点
-console.log('\n① 身份行：状态点 + 旗子 + 名字 +（掉线）已离线徽章')
-check('在线那台：状态点 8×8、圆角、绿（g 明显大于 r / b）',
-  !!one?.dot && one.dot.size.w === 8 && one.dot.size.h === 8 && one.dot.color.g > one.dot.color.r + 20 && one.dot.color.g > one.dot.color.b + 10,
-  JSON.stringify(one?.dot))
-check('掉线 / 未上报那两台：点是红的（r 明显大于 g）',
-  !!down?.dot && down.dot.color.r > down.dot.color.g + 20 && !!idle?.dot && idle.dot.color.r > idle.dot.color.g + 20,
-  `${JSON.stringify(down?.dot?.color)} / ${JSON.stringify(idle?.dot?.color)}`)
-check('★ 只有掉线那台有「已离线」徽章（从未接入 / 未上报都不盖）',
-  down?.badge?.text === '已离线' && !never?.badge && !idle?.badge && !one?.badge,
-  JSON.stringify([one?.badge, down?.badge, never?.badge, idle?.badge]))
+// ① 身份行（2026-10-15 起：旗子 + 名字 +（掉线）已离线徽章，**没有状态点**）
+console.log('\n① 身份行：旗子 + 名字 +（掉线）已离线徽章 —— 卡上没有状态点')
+check('在线那台：状态锚 on、没有「已离线」徽章、行首是旗子（不是圆点）',
+  one?.status === 'on' && !one?.badge && one?.rowFirst === 'img',
+  `${one?.status} / badge=${JSON.stringify(one?.badge)} / 行首=${one?.rowFirst}`)
+check('★ 六张卡里都不再有状态点（data-status 只挂卡根，卡内查不到）',
+  [one, down, never, idle].every((c) => c && c.dotInside === false && (c.status === 'on' || c.status === 'off')),
+  JSON.stringify([one, down, never, idle].map((c) => ({ 锚: c?.status, 卡内有锚: c?.dotInside }))))
 
 // ② meta 行
 console.log('\n② 系统 · 运行时间')

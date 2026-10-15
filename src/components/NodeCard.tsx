@@ -54,7 +54,7 @@ export function offlineSeconds(node: Node): number {
 const CARD_CHIPS = 3
 
 /**
- * 这台机器此刻有没有实时数据（= 状态点点绿、四个读数格写实时值）。
+ * 这台机器此刻有没有实时数据（= 四个读数格写实时值；卡上没有状态点，见下面 ① 的说明）。
  * 与列表沉底是**同一判据**（`online && metrics`，见 App.tsx）：hub 对一个连上但还没上报的
  * agent 答的是 `online: true` + `metrics: null`，那时读数全是「—」，点不该是绿的。
  */
@@ -174,7 +174,7 @@ function trafficFoot(node: Node) {
  * 列表里的那张卡片（本主题唯一的一档，2026-10-15 照站长给的参考站重排）。
  *
  * 从上到下六块（行距、字号按参考站校准过：整卡 ~510×214，那边是 508×209）：
- *   ① 身份行：状态点 + 旗子 + 名字（离线时右端一枚「已离线」徽章）；
+ *   ① 身份行：旗子 + 名字（离线时右端一枚「已离线」徽章）；
  *   ② 一行灰字：系统 · 运行时间（四种处境的口径见 metaLine）；
  *   ③ 四个读数格：CPU / 内存 / 存储 / 负载（上面一条分隔线，见 Meter）；
  *   ④ 上传 / 下载：左右两栏，各带累计总量与实时速率，中间一道竖线；
@@ -217,22 +217,22 @@ export function NodeCard({ node, onOpen, onWarm, terms, selected }: {
       // data-node-card 是滚动定位（见 App 的 NodeList）与护栏共用的锚点；
       // data-selected 是「当前被键盘选中」的标记（护栏读它，不用去解析类名）。
       data-node-card={node.id}
+      data-status={on ? "on" : "off"}
       data-selected={selected ? "1" : undefined}
       className={`min-w-0 cursor-pointer gap-0 px-4 py-3 transition-colors hover:border-foreground/25 ${selected ? "outline-2 outline-offset-1 outline-ring" : ""}`}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen())}
     >
-      {/* ① 身份行：状态点 + 旗子 + 名字（+ 离线徽章）。
-          `data-status` 是护栏的锚点（on / off）；点自己不上文字，悬停说明给的是「在线 / 离线」。
+      {/* ① 身份行：旗子 + 名字（+ 离线徽章）。**没有状态点**。
+          ★那枚 8px 的绿 / 红点 2026-10-15 按站长的要求去掉了（「卡片上的国旗旁边的小圆点去掉」）：
+            在线与否现在只由**离线徽章**表达 —— 在线什么都不带、掉线才盖一枚「已离线」，
+            与原来「绿色点＝正常」相比少一处颜色噪音（一页 30 张卡就是 30 个绿点）。
+          ★`data-status`（on / off）改挂在**卡根**上（见下面那个 div）：它是护栏的锚点，
+            别再去卡里找那枚点（点没了，`querySelector('[data-status]')` 会返回 null）。
           名字加粗一档（参考站是 600）。搜索命中处描色（Highlight：mark 不改变 textContent，
           既有文案断言照旧；没在搜时它原样返回，零影响）。 */}
       <div className="flex min-w-0 items-center gap-2">
-        <span
-          data-status={on ? "on" : "off"}
-          title={on ? "在线" : "离线"}
-          className={"size-2 shrink-0 rounded-full " + (on ? "bg-ok" : "bg-down")}
-        />
         <Country node={node} />
         <h3 className="min-w-0 flex-1 truncate text-sm font-semibold leading-5 tracking-tight"><TextHighlight text={node.name} terms={terms} /></h3>
         {/* 徽章只给「接入过、现在掉线」的机器：从未接入的卡片下面那行说明已经说清了，

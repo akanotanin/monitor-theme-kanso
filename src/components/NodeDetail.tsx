@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
-import { Check, Copy } from "lucide-react"
 
 import { TimeChart } from "@/components/Chart"
 import { PingTooltip } from "@/components/ChartTooltip"
@@ -364,11 +363,11 @@ export function NodeDetail({ node, historyDays, detailRemarks = true }: {
     <div className="space-y-4">
       {/* 旗子在前、名字在后，与卡片上的次序一致。状态徽章与 agent 版本不在这行：
           在线时长已经并进下面的信息项，agent 版本对访客没有意义。
-          名字后那枚小按钮＝把机器名复制进剪贴板（站长自用的快捷，见 CopyName）。 */}
+          ★名字后那枚「复制机器名」2026-10-15 按站长要求去掉（连同剪贴板那段逻辑一起）：
+            详情页标题行只留旗子与名字。 */}
       <div className="flex items-center gap-2">
         <Country node={node} />
         <h2 className="truncate text-lg font-semibold tracking-tight">{node.name}</h2>
-        <CopyName name={node.name} />
       </div>
 
       {/* One flat row of facts: what is left after the traffic figures moved
@@ -638,46 +637,5 @@ export function NodeDetail({ node, historyDays, detailRemarks = true }: {
         </div>
       )}
     </div>
-  )
-}
-
-/**
- * 标题行右端那枚「复制机器名」（只长在整页详情上）：一键把名字取进剪贴板去 ssh 用 ——
- * 站长自用的快捷，所以刻意低调（小图标、悬停才浮出一层浅底，不与旁边的信息争视线）。
- *
- * 按下后换一枚对勾、悬停说明换成「已复制」，1.6 秒后回到原样（连点可重复复制）。
- * 剪贴板 API 只在安全上下文可用（https / localhost）；不可用时如实换成「复制失败」的
- * 说明文字，**不假装成功** —— 静态预览那种普通 http 场景走得到这一支。
- */
-function CopyName({ name }: { name: string }) {
-  const [state, setState] = useState<"idle" | "ok" | "fail">("idle")
-  const timer = useRef<number | undefined>(undefined)
-  useEffect(() => () => window.clearTimeout(timer.current), [])
-  const copy = async () => {
-    let ok = false
-    try {
-      await navigator.clipboard.writeText(name)
-      ok = true
-    } catch {
-      ok = false
-    }
-    setState(ok ? "ok" : "fail")
-    window.clearTimeout(timer.current)
-    timer.current = window.setTimeout(() => setState("idle"), 1600)
-  }
-  return (
-    <button
-      type="button"
-      data-copy-name=""
-      /* 命中区用**纵向型**（`tap-y-6`：上下各扩 10px → 24×44），不用四向的 tap-8：
-         详情页标题行这批控件（资源/网络延迟/量程段）的口径就是「横向不动」（四向外扩
-         会互相盖住，护栏量着「横向撑开 ±2px」），复制按钮跟着同一档才不会成为例外。 */
-      className="tap tap-y-6 grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-      onClick={copy}
-      title={state === "ok" ? "已复制" : state === "fail" ? "复制失败" : "复制机器名"}
-      aria-label="复制机器名"
-    >
-      {state === "ok" ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-    </button>
   )
 }

@@ -209,9 +209,9 @@ check('标签依次是 CPU / 内存 / 存储 / 负载（弱化灰、12px）',
   JSON.stringify(one?.cells.map((c) => c.label)) === JSON.stringify(['CPU', '内存', '存储', '负载']) &&
   one.cells.every((c) => c.labelStyle.size === '12px'),
   JSON.stringify(one?.cells.map((c) => c.label)))
-check('读数是两小数百分比、加粗、比标签大一档（CPU 还要带 3.2%，不是 3 或 3.20）',
+check('读数是两小数百分比、加粗、比标签大一档（13px/600，参考站那一档）',
   one?.cells[0].value === '3.20%' && one.cells[1].value === '20.11%' && one.cells[2].value === '21.45%' &&
-  one.cells.every((c) => c.valueStyle.weight === '600' && Number.parseFloat(c.valueStyle.size) === 14),
+  one.cells.every((c) => c.valueStyle.weight === '600' && Number.parseFloat(c.valueStyle.size) === 13),
   JSON.stringify(one?.cells.map((c) => c.value)))
 check('负载读数是一分钟均值（0.08），悬停说明里带三条均值与单位',
   one?.cells[3].value === '0.08' && /0\.08 0\.03 0\.01/.test(one.cells[3].title ?? ''), String(one?.cells[3].title))
@@ -220,7 +220,7 @@ check('★ 负载的条 = load / 核数（0.08 / 2 核 = 4%），不是把均值
 check('内存 / 存储的条按真实比例（20.11% / 21.45%）',
   Math.abs(one.cells[1].barPct - 20.107) < 0.05 && Math.abs(one.cells[2].barPct - 21.454) < 0.05,
   `${one.cells[1].barPct} / ${one.cells[2].barPct}`)
-check('条的粗细就是那一档的 4px（贴在读数下缘）', one?.cells.every((c) => c.barH === 4), JSON.stringify(one?.cells.map((c) => c.barH)))
+check('条的粗细就是那一档的 3px（贴在读数下缘、清新的绿）', one?.cells.every((c) => c.barH === 3), JSON.stringify(one?.cells.map((c) => c.barH)))
 check('CPU 的悬停说明写核数（2 核）', one?.cells[0].title === '2 核', String(one?.cells[0]?.title))
 check('掉线那台：四格读数都写「—」、条不画（宽度 0）',
   down?.cells.every((c) => c.value === '—' && c.barPct === 0), JSON.stringify(down?.cells?.map((c) => c.value)))

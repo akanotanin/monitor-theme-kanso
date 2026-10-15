@@ -53,7 +53,13 @@ const pending = new Map()
 const ws = new WebSocket(wsUrl)
 await new Promise((r) => { ws.onopen = r })
 const send = (m, p = {}) => new Promise((res) => { const i = ++id; pending.set(i, res); ws.send(JSON.stringify({ id: i, method: m, params: p })) })
-const js = async (e) => (await send('Runtime.evaluate', { expression: e, returnByValue: true, awaitPromise: true })).result?.result?.value
+const js = async (e) => {
+  const r = await send('Runtime.evaluate', { expression: e, returnByValue: true, awaitPromise: true })
+  // 页面里那段表达式一旦抛异常，CDP 不会报错、只会少一个 value —— 之前踩过（模板串里正则被吃成 /d+/），
+  // 结果是一句没头没脑的 "undefined is not valid JSON"。这里把异常原样打出来。
+  if (r.result?.exceptionDetails) console.error('页面探测抛异常：', (r.result.exceptionDetails.exception?.description || JSON.stringify(r.result.exceptionDetails)).slice(0, 800))
+  return r.result?.result?.value
+}
 ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id) } }
 await send('Runtime.enable'); await send('Page.enable')
 
@@ -106,9 +112,16 @@ async function load({ config, systemDark = false, visitor = null, freeze = null 
       const cardEff = paint(body, getComputedStyle(card).backgroundColor).rgb
       const text = card.querySelector('h3')
       const fillRaw = getComputedStyle(fill).backgroundColor
+      const fillRgb = paint(cardEff, fillRaw).rgb
+      // 别在这段（模板串）里写正则：模板转义会吃掉一层反斜杠，匹配不上还是小事，
+      // 真踩过的是匹配成 null 再 .map() —— 整个探测抛异常、CDP 只回一个 undefined。
+      // （同理：这段注释里也不能出现反引号，会直接把外层模板串截断。）
+      const [fr, fg, fb] = fillRgb.slice(4, -1).split(',').map(Number)
       return {
+        // 「绿」＝ g 明显高于 r / b；ods 是那份 2026-10-15 定的口径（细 + 绿）。
+        green: fg > fr + 30 && fg > fb + 20,
         alpha: paint(null, fillRaw).alpha,
-        fill: paint(cardEff, fillRaw).rgb,
+        fill: fillRgb,
         text: text ? paint(cardEff, getComputedStyle(text).color).rgb : null,
         card: cardEff,
       }
@@ -145,7 +158,7 @@ check('auto：北京时间 07:30（刚过夜界）→ 亮色', s.dark === false,
 console.log('\n=== theme-color（手机浏览器那一圈）===')
 // 判据：跟着**页面实际用的**档走（不是系统的）—— 站长的「随北京时间自动」在夜里与系统
 // 相反时，只有这一步才对得上；index.html 那两份带 media 的静态兜底应当被摘掉。
-const LIGHT_BG = 'rgb(250, 250, 250)'
+const LIGHT_BG = 'rgb(250, 250, 249)'  // stone-50（2026-10-15 换暖石色系）
 const tcOf = (x) => ({ live: (x.themeColors || []).filter((m) => !m.media), all: x.themeColors, bg: x.bodyBg })
 s = await load({ config: { themeMode: 'light' }, systemDark: true })
 let tc = tcOf(s)
@@ -161,9 +174,11 @@ check('theme-color：自动档夜里（与系统相反）→ 跟着页面的暗�
 
 console.log('\n=== 进度条填色（两套主题各断一遍）===')
 /**
- * 2026-10-08 站长反馈「进度条有些突兀，尤其服务器多的时候」：根因是填色＝正文本色
- * （亮 18.7:1 / 暗 12.6:1，卡片上最重的一笔），一页 4×N 根条会把读数压住。
- * 判据落在**合成后的有效对比度**上：3.5:1 起步（图形判读底线），8:1 封顶（必须明显轻于站名）。
+ * 进度条填色的判据。2026-10-08 站长反馈「进度条有些突兀」判的是「填色＝正文本色太重」；
+ * 2026-10-15 起口径换成参考站那套：**细一档（3px）+ 清新的绿（--ok）**，同样不压人、还更透气。
+ * 判据因此从「半透明前景色」改成「绿、且合成后的有效对比度落在 2–8:1」：
+ * 下限 2 是**点缀型图形**的口径（条只有 3px、读数就在它正上方，值不靠它读；WCAG 的非文本
+ * 3:1 针对「理解内容所必需」的图形，这一根不是），8:1 封顶（必须明显轻于站名）。
  * 暗色单独断一遍——同一个 token 在暗底上的有效对比度与亮色不是一回事。
  */
 const lumOf = (s) => {
@@ -172,13 +187,13 @@ const lumOf = (s) => {
 }
 const contrast = (a, b) => { const [x, y] = [lumOf(a), lumOf(b)].sort((m, n) => n - m); return +((x + 0.05) / (y + 0.05)).toFixed(2) }
 s = await load({ config: { themeMode: 'light' } })
-check('亮色：进度条填色不是正文本色（有效对比 3.5–8:1 且轻于站名）',
-  s.meter && s.meter.alpha < 1 && contrast(s.meter.fill, s.meter.card) >= 3.5 && contrast(s.meter.fill, s.meter.card) <= 8 &&
+check('亮色：进度条是清新的绿，且有效对比 2–8:1、明显轻于站名',
+  s.meter && s.meter.green && contrast(s.meter.fill, s.meter.card) >= 2 && contrast(s.meter.fill, s.meter.card) <= 8 &&
   contrast(s.meter.fill, s.meter.card) < contrast(s.meter.text, s.meter.card),
   JSON.stringify(s.meter) + ` 填色 ${s.meter && contrast(s.meter.fill, s.meter.card)}:1 / 站名 ${s.meter && contrast(s.meter.text, s.meter.card)}:1`)
 s = await load({ config: { themeMode: 'dark' } })
 check('暗色：同上（暗底上的有效对比度与亮色不是一回事，单独断）',
-  s.meter && s.meter.alpha < 1 && contrast(s.meter.fill, s.meter.card) >= 3.5 && contrast(s.meter.fill, s.meter.card) <= 8 &&
+  s.meter && s.meter.green && contrast(s.meter.fill, s.meter.card) >= 2 && contrast(s.meter.fill, s.meter.card) <= 8 &&
   contrast(s.meter.fill, s.meter.card) < contrast(s.meter.text, s.meter.card),
   JSON.stringify(s.meter) + ` 填色 ${s.meter && contrast(s.meter.fill, s.meter.card)}:1 / 站名 ${s.meter && contrast(s.meter.text, s.meter.card)}:1`)
 

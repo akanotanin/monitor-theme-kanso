@@ -11,9 +11,12 @@ function Card({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card"
       className={cn(
-        // 卡片这个「壳」照参考站那套：`rounded-lg border bg-card`，**不带阴影**——
-        // 它靠「浅灰页面 + 白卡 + 一道描边」把卡片托出来，加阴影反而糊成一团。
-        "flex flex-col gap-6 rounded-lg border bg-card py-6 text-card-foreground",
+        // 卡片这个「壳」：`rounded-2xl border bg-card`（16px 圆角 —— 与参考站一致）；
+        // ★**带一层柔光阴影**（2026-10-15 起）：草稿期那版是「不带阴影、只靠描边」，
+        //   但参考站的卡片是**浮**在页面上的（shadow-lg 的几何 + stone-200 的影色），
+        //   那层影才是「小清新」的一半 —— 硬描边读起来是「格子」，软阴影读起来是「卡片」。
+        //   暗色下不加影（黑影落在暖暗底上只会糊成一块），仍是描边当家。
+        "flex flex-col gap-6 rounded-2xl border bg-card py-6 text-card-foreground shadow-lg shadow-border/60 dark:shadow-none",
         className
       )}
       {...props}

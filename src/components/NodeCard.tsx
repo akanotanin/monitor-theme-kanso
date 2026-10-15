@@ -234,7 +234,7 @@ export function NodeCard({ node, onOpen, onWarm, terms, selected }: {
           className={"size-2 shrink-0 rounded-full " + (on ? "bg-ok" : "bg-down")}
         />
         <Country node={node} />
-        <h3 className="min-w-0 flex-1 truncate font-semibold leading-5"><TextHighlight text={node.name} terms={terms} /></h3>
+        <h3 className="min-w-0 flex-1 truncate text-sm font-semibold leading-5 tracking-tight"><TextHighlight text={node.name} terms={terms} /></h3>
         {/* 徽章只给「接入过、现在掉线」的机器：从未接入的卡片下面那行说明已经说清了，
             连上但还没上报的更不该被盖上「已离线」。 */}
         {deployed(node) && !node.online && (
@@ -243,7 +243,7 @@ export function NodeCard({ node, onOpen, onWarm, terms, selected }: {
       </div>
 
       {/* ② 系统 · 运行时间：与名字左对齐的一行灰字（@/lib/format 的 osName 去掉代号那截）。 */}
-      <p className="mt-0.5 truncate text-xs text-muted-foreground">{metaLine(node)}</p>
+      <p className="mt-0.5 truncate text-[11px] leading-4 text-muted-foreground">{metaLine(node)}</p>
 
       {/* One layout for both states: a disconnected node still knows its
           cores, memory, disk size and traffic totals, and showing those with
@@ -288,31 +288,31 @@ export function NodeCard({ node, onOpen, onWarm, terms, selected }: {
           <div data-net="row" className="mt-1.5 grid grid-cols-2">
             <div className="min-w-0 pr-3">
               <div className="flex items-baseline justify-between gap-2 text-xs">
-                <span className="shrink-0"><span className="text-ok">↑</span> 上传</span>
-                <span className="tnum min-w-0 truncate text-muted-foreground">累计 {bytes(node.total_tx)}</span>
+                <span className="shrink-0 text-ok-ink">↑ 上传</span>
+                <span className="tnum min-w-0 truncate text-[11px] leading-4 text-muted-foreground">累计 {bytes(node.total_tx)}</span>
               </div>
-              <div className="tnum mt-0.5 truncate text-base font-semibold leading-[18px]">{m ? rate(m.net_tx) : "—"}</div>
+              <div className="tnum mt-0.5 truncate text-sm font-semibold leading-5">{m ? rate(m.net_tx) : "—"}</div>
             </div>
             <div className="min-w-0 border-l pl-3">
               <div className="flex items-baseline justify-between gap-2 text-xs">
-                <span className="shrink-0"><span className="text-ok">↓</span> 下载</span>
-                <span className="tnum min-w-0 truncate text-muted-foreground">累计 {bytes(node.total_rx)}</span>
+                <span className="shrink-0 text-ok-ink">↓ 下载</span>
+                <span className="tnum min-w-0 truncate text-[11px] leading-4 text-muted-foreground">累计 {bytes(node.total_rx)}</span>
               </div>
-              <div className="tnum mt-0.5 truncate text-base font-semibold leading-[18px]">{m ? rate(m.net_rx) : "—"}</div>
+              <div className="tnum mt-0.5 truncate text-sm font-semibold leading-5">{m ? rate(m.net_rx) : "—"}</div>
             </div>
           </div>
 
           {/* ⑤ 总流量：数字行（左：已用 / 额度，右：重置日；没有额度就写 N/A，与参考站一致），
               再下面一条全宽进度条 —— 用量按套餐的计流量方式算（trafficFoot / monthUsage）。 */}
           <div className="tnum mt-1.5 flex items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
-            <span className="min-w-0 truncate">{trafficFoot(node)}</span>
+            <span className="min-w-0 truncate font-medium text-foreground/85">{trafficFoot(node)}</span>
             <span className="shrink-0">
               流量重置：{node.traffic_limit > 0 ? `每月 ${node.traffic_reset_day} 日` : "N/A"}
             </span>
           </div>
-          <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-muted">
+          <div className="mt-1 h-[3px] w-full overflow-hidden rounded-full bg-muted">
             <div
-              className="h-full rounded-full bg-foreground/70 transition-[width] duration-500"
+              className="h-full rounded-full bg-ok transition-[width] duration-500"
               style={{ width: `${node.traffic_limit > 0 ? percent(monthUsage(node), node.traffic_limit) : 0}%` }}
             />
           </div>

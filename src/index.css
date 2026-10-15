@@ -11,29 +11,42 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* 随包字体：Inter（latin 可变字重 400–700，48 KB）。参考站那种「小清新」有一半来自这一档
+   几何感更强的无衬线 —— 数字与拉丁字母走 Inter，汉字仍回落到系统 CJK 字体（Inter 不含 CJK）。
+   子集由 Google Fonts 的 latin 档取得（universe: 拉丁基本区 + ↑↓ 箭头 U+2191/2193 + € U+20AC
+   等），随包自带、不引第三方 CDN。许可见 public/fonts/INTER-LICENSE.txt（OFL 1.1）。 */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/inter-latin-var.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
   --radius: 0.625rem;
-  /* 页面底色：参考站是 oklch(0.985) 那一档浅灰，卡片才「浮」得出来。原来两面都是纯白，
-     卡片只能靠描边+阴影区分，整页看着发闷。 */
-  --background: oklch(0.985 0 0);
-  --foreground: oklch(0.18 0 0);
+  /* 页面底色：2026-10-15 起整套中性色换成**暖石（stone）系** —— 参考站的「小清新」大半来自
+     这一档温灰：冷灰（纯中性）在同样亮度下显得「工业」，暖灰才显得轻、显得软。
+     页面 stone-50 / 卡片纯白 / 描边 stone-200 / 次级文字 stone-500（4.8:1）。 */
+  --background: oklch(0.985 0.001 106);
+  --foreground: oklch(0.216 0.006 56);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0 0);
+  --card-foreground: oklch(0.216 0.006 56);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0 0);
-  --primary: oklch(0.18 0 0);
+  --popover-foreground: oklch(0.216 0.006 56);
+  --primary: oklch(0.216 0.006 56);
   --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.96 0 0);
-  --secondary-foreground: oklch(0.18 0 0);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.52 0 0);
-  --accent: oklch(0.955 0 0);
-  --accent-foreground: oklch(0.18 0 0);
-  --destructive: oklch(0.3 0 0);
-  /* 描边：参考站是这一档冷灰（带一点点蓝），比纯中性灰更像「卡片的一道线」。 */
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.62 0 0);
+  --secondary: oklch(0.970 0.001 106);
+  --secondary-foreground: oklch(0.216 0.006 56);
+  --muted: oklch(0.970 0.001 106);
+  --muted-foreground: oklch(0.553 0.012 58);
+  --accent: oklch(0.970 0.001 106);
+  --accent-foreground: oklch(0.216 0.006 56);
+  --destructive: oklch(0.3 0.008 56);
+  --border: oklch(0.923 0.003 49);
+  --input: oklch(0.923 0.003 49);
+  --ring: oklch(0.716 0.009 56);
   /* 九色调色板：曲线要用几组同时可分辨的线，单色阶在三组以上就只剩深浅，
      于是给延迟曲线一份真正的色相环（1-9 依次是蓝 / 橙 / 青 / 紫 / 红 / 绿 /
      蓝青 / 黄 / 品红）。亮色下压亮度保证白底可读，深色下抬亮度，色相不变，
@@ -47,8 +60,15 @@
   --chart-7: oklch(0.6 0.12 220);
   --chart-8: oklch(0.66 0.14 70);
   --chart-9: oklch(0.58 0.18 335);
-  /* 进度条按"越满越危险"上色，所以这里有真正的绿与琥珀：单色阶表达不了严重度。 */
-  --ok: oklch(0.6 0.15 155);
+  /* 绿分两支（2026-10-15，照参考站的分工）：
+     · `--ok` 是**图形**用的清新绿（进度条、状态点）—— 亮、透气，白卡上 2.3:1：条只有 3px、
+       读数就在它正上方，值不靠它读，所以不套正文那套 4.5:1（点缀型图形的底线在
+       verify_appearance 里单列成 ≥2）。
+     · `--ok-ink` 是**绿色文字**用的那支（↑ 上传 / ↓ 下载 标签）—— 与参考站的 emerald 同档，
+       白卡上 3.8:1，小字站得住。
+     琥珀 / 红仍是「越满越危险」那一族（详情页曲线、离线徽章）。 */
+  --ok: oklch(0.723 0.192 150);
+  --ok-ink: oklch(0.596 0.127 163);
   --warn: oklch(0.62 0.15 70);
   /* 离线那一枚状态点与徽章用的红（2026-10-15 卡片改版时加的第三枚语义色，与 ok/warn 同族）：
      亮色压亮度保证白卡上可读，暗色抬亮度，色相不变。 */
@@ -105,13 +125,18 @@
   --chart-7: oklch(0.74 0.11 220);
   --chart-8: oklch(0.8 0.13 75);
   --chart-9: oklch(0.72 0.16 335);
-  --ok: oklch(0.74 0.14 155);
+  --ok: oklch(0.72 0.17 150);
+  --ok-ink: oklch(0.78 0.13 160);
   --warn: oklch(0.8 0.13 75);
   /* 与亮色同一份色相，只抬亮度（见上面 --ok / --warn 的说明）。 */
   --down: oklch(0.7 0.17 25);
 }
 
 @theme inline {
+  /* 字体栈：Inter 领衔（随包那份，见上面的 @font-face），其余回落系统 —— 汉字由系统 CJK 出，
+     数字与拉丁走 Inter。`ui-sans-serif`/`system-ui` 在前还是后差别不大，但别把 Inter 放到
+     系统字后面：那样装了 Inter 的访客也看不到它。 */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -144,6 +169,7 @@
   --color-chart-8: var(--chart-8);
   --color-chart-9: var(--chart-9);
   --color-ok: var(--ok);
+  --color-ok-ink: var(--ok-ink);
   --color-warn: var(--warn);
   --color-down: var(--down);
 }

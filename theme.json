@@ -2,7 +2,7 @@
   "name": "kanso",
   "short": "kanso",
   "description": "自家制の极简探针（Monitor）主题：只留「简约」一档卡片形态，附搜索、详情页与明暗双色。",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "author": "akanotanin",
   "url": "https://github.com/akanotanin/monitor-theme-kanso",
   "config": [

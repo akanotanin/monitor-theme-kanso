@@ -32,8 +32,8 @@ export function Meter({ label, value, pct, title }: Props) {
   return (
     <div className="min-w-0" title={title}>
       <div className="truncate text-xs text-muted-foreground">{label}</div>
-      <div className="tnum mt-0.5 truncate text-sm font-semibold">{value}</div>
-      <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-muted">
+      <div className="tnum mt-0.5 truncate text-sm font-semibold leading-[18px]">{value}</div>
+      <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-muted">
         <div className="h-full rounded-full bg-foreground/70 transition-[width] duration-500" style={{ width: `${filled}%` }} />
       </div>
     </div>

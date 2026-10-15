@@ -464,7 +464,7 @@ export default function App() {
             「**站名优先展开、图标自己滑**」分：站名那格 max-w-[55%]（正常名字完整显示，
             只有长到离谱才轮到 truncate），搜索钉在它右边，剩下几枚图标装进一条能横向滑动的
             条带里 —— 与下面那行分组标签同一套做法：装不下就滑，不裁字、也不把整页撑宽。 */}
-        <div className="mx-auto flex max-w-[1280px] items-center gap-2 px-4 py-3 sm:gap-3 sm:px-6">
+        <div className="mx-auto flex max-w-[1080px] items-center gap-2 px-4 py-3 sm:gap-3 sm:px-6">
           {/* The site name is the way back to the list, so a node page needs
               no back button of its own. A 32px disc of the site's icon leads
               it — `/favicon.svg` is the one address that answers with the
@@ -530,7 +530,7 @@ export default function App() {
         )}
       </header>
 
-      <main className="mx-auto w-full max-w-[1280px] flex-1 space-y-5 px-4 py-4 sm:px-6">
+      <main className="mx-auto w-full max-w-[1080px] flex-1 space-y-5 px-4 py-4 sm:px-6">
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         {open !== null ? (
@@ -549,10 +549,11 @@ export default function App() {
         ) : !nodes ? (
           // 还在等节点列表：骨架与卡片网格同一版式。
           // 高度跟着卡片来 —— 2026-10-15 卡片改成参考站那一套（身份行 + 系统行 + 四个读数格 +
-          // 上传下载 + 总流量 + 底注）之后是 266px（1440 视口四列，见 tools/verify_card_form）。
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          // 上传下载 + 总流量 + 底注）、并把行距收到参考站那一档之后是 231px（1440 视口两列，
+          // 见 tools/verify_card_form）。
+          <div className="grid gap-3 md:grid-cols-2">
             {[0, 1, 2].map((i) => (
-              <Skeleton key={i} className="h-[266px]" />
+              <Skeleton key={i} className="h-[231px]" />
             ))}
           </div>
         ) : (
@@ -584,7 +585,7 @@ export default function App() {
           「Kanso」那截点开去本主题的源码仓库 —— 新标签页打开，别把访客从状态页带走
           （链接地址与 theme.json 的 url 是同一个，见上面的 REPO_URL）。
           样式见 index.css 的 .theme-credit。 */}
-      <footer className="mx-auto mt-2 w-full max-w-[1280px] border-t px-4 pb-5 pt-4 sm:mt-0 sm:border-t-0 sm:px-6 sm:pb-5 sm:pt-1">
+      <footer className="mx-auto mt-2 w-full max-w-[1080px] border-t px-4 pb-5 pt-4 sm:mt-0 sm:border-t-0 sm:px-6 sm:pb-5 sm:pt-1">
         <p className="theme-credit text-center sm:pr-3 sm:text-right">
           Theme:{" "}
           {REPO_URL ? (
@@ -683,7 +684,10 @@ function NodeList({ nodes, total, onOpen, onWarm, terms, cursorId }: {
       {total === 0 ? (
         <p className="py-16 text-center text-sm text-muted-foreground">还没有节点</p>
       ) : (
-        <div className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        // ★ 一行两张宽卡（2026-10-15 照站长给的参考站定的：那边 768 起就是两列、卡片 508×209，
+        //   整页容器约 1040）。本站容器同步收到 1080 → 两列即每张 510 宽，和参考站一样。
+        //   原先的 2/3/4 列 + 1280 容器让卡片窄而高（299×266），形态差得远。
+        <div className="grid items-start gap-3 md:grid-cols-2">
           {list.map((n) => (
             <NodeCard key={n.id} node={n} onOpen={() => onOpen(n.id)} onWarm={onWarm} terms={terms} selected={n.id === cursorId} />
           ))}

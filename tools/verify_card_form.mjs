@@ -154,6 +154,8 @@ const probe = `(() => {
       meta: c.querySelector('p')?.textContent ?? null,
       cells,
       gridCols: m ? getComputedStyle(m).gridTemplateColumns.split(' ').length : 0,
+      // 列表那一层：一行几张卡（照参考站的口径，768 起两列宽卡）。
+      listCols: getComputedStyle(c.parentElement).gridTemplateColumns.split(' ').length,
       divider: m ? getComputedStyle(m).borderTopWidth : null,
       net: net ? {
         uploadText: net.children[0].innerText.replace(/\\n/g, ' | '),
@@ -269,14 +271,19 @@ check('备注小卡片与底注同一行（右侧、不与价格那截重叠）'
 console.log('\n⑦ 从未接入与版面')
 check('从未接入那台：只有身份行 + 一行说明，没有读数区', never?.hint === true && never.cells === null, `hint=${never?.hint}`)
 // 底注「有哪截写哪截」：没有价格 / 到期 / 备注的那台整行不占位，所以它比邻居矮；有底注的那几台
-// 高度一致（带备注小卡片的那两台会高出 6px —— 小卡片自己 22px 比那行小字高一档）。
+// 高度几乎一致 —— 差出来的几像素来自两处：备注小卡片自己 22px 比那行小字高一档（+6）、
+// 离线徽章比名字行高 2px（+2）。
 {
   const withFoot = cards.filter((c) => c.cells && (c.note || c.chips.length > 0)).map((c) => c.box.h)
   const withoutFoot = cards.filter((c) => c.cells && !c.note && !c.chips.length).map((c) => c.box.h)
-  check('底注有哪截写哪截：没底注的那台更矮，有底注的几台高度几乎一致（相差 ≤ 6px）',
-    Math.max(...withFoot) - Math.min(...withFoot) <= 6 && withoutFoot.length > 0 && Math.max(...withoutFoot) < Math.min(...withFoot),
+  check('底注有哪截写哪截：没底注的那台更矮，有底注的几台高度几乎一致（相差 ≤ 8px）',
+    Math.max(...withFoot) - Math.min(...withFoot) <= 8 && withoutFoot.length > 0 && Math.max(...withoutFoot) < Math.min(...withFoot),
     JSON.stringify(cards.map((c) => `${c.name}:${c.box.h}`)))
 }
+check('★ 列表是一行两张宽卡（参考站口径，1440 上两列）', cards[0]?.listCols === 2, `listCols=${cards[0]?.listCols}`)
+check('★ 卡片是宽扁的（宽 ≥ 2×高，参考站 508×209 ≈ 2.43:1）',
+  cards.filter((c) => c.cells).every((c) => c.box.w >= 2 * c.box.h),
+  JSON.stringify(cards.map((c) => `${c.box.w}x${c.box.h}`)))
 check('1440 视口上整页没有横向溢出',
   (await js('document.documentElement.scrollWidth <= document.documentElement.clientWidth')) === true,
   `${await js('document.documentElement.scrollWidth')} vs ${await js('document.documentElement.clientWidth')}`)
@@ -288,6 +295,7 @@ for (let i = 0; i < 60; i++) { await sleep(200); if (await js(`document.querySel
 await sleep(700)
 const m390 = JSON.parse(await js(probe) ?? '[]')
 check('手机上一列：四列读数格仍是四列', m390[0]?.gridCols === 4, String(m390[0]?.gridCols))
+check('手机上一列：列表是单列（两列宽卡从 768 起）', m390[0]?.listCols === 1, `listCols=${m390[0]?.listCols}`)
 check('手机上四个读数都没被截（scrollWidth ≤ clientWidth）',
   (await js(`(() => {
     const c = document.querySelector('[data-node-card]')

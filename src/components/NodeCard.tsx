@@ -171,9 +171,9 @@ function trafficFoot(node: Node) {
 }
 
 /**
- * 列表里的那张卡片（本主题唯一的一档，2026-10-15 按站长给的参考站重排）。
+ * 列表里的那张卡片（本主题唯一的一档，2026-10-15 照站长给的参考站重排）。
  *
- * 从上到下六块：
+ * 从上到下六块（行距、字号按参考站校准过：整卡 ~510×214，那边是 508×209）：
  *   ① 身份行：状态点 + 旗子 + 名字（离线时右端一枚「已离线」徽章）；
  *   ② 一行灰字：系统 · 运行时间（四种处境的口径见 metaLine）；
  *   ③ 四个读数格：CPU / 内存 / 存储 / 负载（上面一条分隔线，见 Meter）；
@@ -218,7 +218,7 @@ export function NodeCard({ node, onOpen, onWarm, terms, selected }: {
       // data-selected 是「当前被键盘选中」的标记（护栏读它，不用去解析类名）。
       data-node-card={node.id}
       data-selected={selected ? "1" : undefined}
-      className={`min-w-0 cursor-pointer gap-0 p-4 transition-colors hover:border-foreground/25 ${selected ? "outline-2 outline-offset-1 outline-ring" : ""}`}
+      className={`min-w-0 cursor-pointer gap-0 px-4 py-3 transition-colors hover:border-foreground/25 ${selected ? "outline-2 outline-offset-1 outline-ring" : ""}`}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen())}
@@ -234,7 +234,7 @@ export function NodeCard({ node, onOpen, onWarm, terms, selected }: {
           className={"size-2 shrink-0 rounded-full " + (on ? "bg-ok" : "bg-down")}
         />
         <Country node={node} />
-        <h3 className="min-w-0 flex-1 truncate font-semibold"><TextHighlight text={node.name} terms={terms} /></h3>
+        <h3 className="min-w-0 flex-1 truncate font-semibold leading-5"><TextHighlight text={node.name} terms={terms} /></h3>
         {/* 徽章只给「接入过、现在掉线」的机器：从未接入的卡片下面那行说明已经说清了，
             连上但还没上报的更不该被盖上「已离线」。 */}
         {deployed(node) && !node.online && (
@@ -253,7 +253,7 @@ export function NodeCard({ node, onOpen, onWarm, terms, selected }: {
           {/* ③ 四个读数格：参考站的口径是「表名 / 读数 / 条」一列到底，上面一条分隔线把头部
               与读数区隔开。格子里只剩百分比：核数、已用 / 总量挪进各自的悬停说明（Meter 的
               title），整页详情里仍然写全。 */}
-          <div data-metrics="" className="mt-3 grid grid-cols-4 gap-x-3 border-t pt-2.5">
+          <div data-metrics="" className="mt-1.5 grid grid-cols-4 gap-x-3 border-t pt-1.5">
             <Meter
               label="CPU"
               title={`${node.cpu_cores} 核`}
@@ -285,32 +285,32 @@ export function NodeCard({ node, onOpen, onWarm, terms, selected }: {
               速率是这一块的重心（大字加粗）；累计总量弱化成灰字跟在标签那一行的右端。
               箭头保留 ↑ / ↓（可以整段复制），颜色用 --ok —— 卡片上唯一的彩色笔画。
               `data-net` 是给护栏认这一块用的锚点。 */}
-          <div data-net="row" className="mt-3 grid grid-cols-2">
+          <div data-net="row" className="mt-1.5 grid grid-cols-2">
             <div className="min-w-0 pr-3">
               <div className="flex items-baseline justify-between gap-2 text-xs">
                 <span className="shrink-0"><span className="text-ok">↑</span> 上传</span>
                 <span className="tnum min-w-0 truncate text-muted-foreground">累计 {bytes(node.total_tx)}</span>
               </div>
-              <div className="tnum mt-0.5 truncate text-base font-semibold">{m ? rate(m.net_tx) : "—"}</div>
+              <div className="tnum mt-0.5 truncate text-base font-semibold leading-[18px]">{m ? rate(m.net_tx) : "—"}</div>
             </div>
             <div className="min-w-0 border-l pl-3">
               <div className="flex items-baseline justify-between gap-2 text-xs">
                 <span className="shrink-0"><span className="text-ok">↓</span> 下载</span>
                 <span className="tnum min-w-0 truncate text-muted-foreground">累计 {bytes(node.total_rx)}</span>
               </div>
-              <div className="tnum mt-0.5 truncate text-base font-semibold">{m ? rate(m.net_rx) : "—"}</div>
+              <div className="tnum mt-0.5 truncate text-base font-semibold leading-[18px]">{m ? rate(m.net_rx) : "—"}</div>
             </div>
           </div>
 
           {/* ⑤ 总流量：数字行（左：已用 / 额度，右：重置日；没有额度就写 N/A，与参考站一致），
               再下面一条全宽进度条 —— 用量按套餐的计流量方式算（trafficFoot / monthUsage）。 */}
-          <div className="tnum mt-2.5 flex items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
+          <div className="tnum mt-1.5 flex items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
             <span className="min-w-0 truncate">{trafficFoot(node)}</span>
             <span className="shrink-0">
               流量重置：{node.traffic_limit > 0 ? `每月 ${node.traffic_reset_day} 日` : "N/A"}
             </span>
           </div>
-          <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-muted">
+          <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-muted">
             <div
               className="h-full rounded-full bg-foreground/70 transition-[width] duration-500"
               style={{ width: `${node.traffic_limit > 0 ? percent(monthUsage(node), node.traffic_limit) : 0}%` }}
@@ -320,7 +320,7 @@ export function NodeCard({ node, onOpen, onWarm, terms, selected }: {
           {/* ⑥ 底注：价格 / 到期在左、备注小卡片在右；两截都没有就整行不占位。
               `data-remark="card"` 是护栏的锚点（与整页详情那一块的 `data-remark-block` 区分开）。 */}
           {(note || chips.length > 0) && (
-            <div className="mt-3 flex min-w-0 items-center justify-between gap-2">
+            <div className="mt-1.5 flex min-w-0 items-center justify-between gap-2">
               <span className="tnum min-w-0 truncate text-[11px] leading-4 text-muted-foreground">{note}</span>
               {chips.length > 0 && (
                 <span data-remark="card" className="flex min-w-0 shrink items-center justify-end gap-1">

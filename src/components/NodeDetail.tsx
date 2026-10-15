@@ -63,11 +63,51 @@ const TABS = [
   { key: "latency", label: "网络延迟" },
 ] as const
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+/**
+ * 一块面板：小标题在上、图表在下 —— 详情页里每一块都用它。
+ *
+ * ★ 2026-10-15 起它是**一张白卡**（`rounded-2xl border bg-card` ＋ 柔光阴影），与列表页的卡片同一副壳。
+ *   从前详情页是「整页平铺、块与块靠一条硬边线分隔」—— 那是旧身份（硬描边 = 格子、白卡 = 卡片）；
+ *   而参考站的详情页也正是这套白卡（它的图表块就是白卡）。列表与详情从此共用同一种面。
+ *   ★上了卡壳之后每块多 26px（上下 padding 12×2 + 描边 2），**骨架屏必须同源**：
+ *   `App.tsx` 的 `DetailSkeleton` 按同样的壳摆，否则点开时「先塌再撑」（verify_detail_preload 会照出来）。
+ *
+ * `fill`：图那一层改成「吃掉卡里剩下的高度」（网络延迟那一块：整卡被钉在一屏以内，图 `flex-1`），
+ * 默认那档仍是写死的 `h-40`（Recharts 的 ResponsiveContainer 需要一个有尺寸的父亲，别让它自己去猜）。
+ */
+function Panel({ title, children, fill = false }: { title: string; children: React.ReactNode; fill?: boolean }) {
   return (
-    <div>
-      <h4 className="mb-2 text-xs font-medium text-muted-foreground">{title}</h4>
-      <div className="h-40 w-full text-muted-foreground">{children}</div>
+    <section
+      className={
+        "rounded-2xl border bg-card px-4 py-3 text-card-foreground shadow-lg shadow-border/60 dark:shadow-none" +
+        // `h-full` 不能少：外层那层钉的是像素高度，卡不吃满它，里面的 `flex-1` 就没有可分配的高度
+        // ——Recharts 量到 0 会干脆不画（2026-10-15 踩过：延迟图整个不出现，护栏三连红）。
+        (fill ? " flex h-full min-h-0 flex-col" : "")
+      }
+    >
+      <h4 className="mb-2 shrink-0 text-xs font-medium text-muted-foreground">{title}</h4>
+      <div className={fill ? "min-h-0 w-full flex-1 text-muted-foreground" : "h-40 w-full text-muted-foreground"}>
+        {children}
+      </div>
+    </section>
+  )
+}
+
+/**
+ * 空 / 错状态：**同一副白卡壳**，里面一行居中的话。
+ *
+ * 从前这几处是光秃秃一行字落在页面上（py-8 的 `<p>`）—— 与图表块的白卡面不统一，页面显得"未完成"。
+ * 卡壳与 Panel 一致（2026-10-15 起），`tone` 用来把"读失败了"那一句换成 destructive。
+ */
+function EmptyPanel({ children, tone = "muted" }: { children: React.ReactNode; tone?: "muted" | "error" }) {
+  return (
+    <div className="rounded-2xl border bg-card px-4 py-3 text-card-foreground shadow-lg shadow-border/60 dark:shadow-none">
+      <p
+        className={`py-8 text-center text-sm ${tone === "error" ? "text-destructive" : "text-muted-foreground"}`}
+        role={tone === "error" ? "alert" : undefined}
+      >
+        {children}
+      </p>
     </div>
   )
 }
@@ -76,8 +116,12 @@ function Tab({ active, onClick, children }: { active: boolean; onClick: () => vo
   return (
     <button
       onClick={onClick}
-      className={`tap tap-y-6 rounded-md px-2.5 py-1 text-xs transition-colors ${
-        active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+      className={`tap tap-y-6 rounded-full px-2.5 py-1 text-xs transition-colors ${
+        // 选中态＝**白胶囊 + 轻阴影 + 加粗深字**（参考站的页签就是这样），不靠填深色或描边 ——
+        // 深色实心块在暖白底上是一块黑补丁，是旧身份里最重的那个东西（2026-10-15 换掉）。
+        active
+          ? "bg-card font-medium text-foreground shadow-sm ring-1 ring-border"
+          : "text-muted-foreground hover:bg-muted"
       }`}
     >
       {children}
@@ -323,7 +367,7 @@ export function NodeDetail({ node, historyDays, detailRemarks = true }: {
           名字后那枚小按钮＝把机器名复制进剪贴板（站长自用的快捷，见 CopyName）。 */}
       <div className="flex items-center gap-2">
         <Country node={node} />
-        <h2 className="truncate text-lg font-medium">{node.name}</h2>
+        <h2 className="truncate text-lg font-semibold tracking-tight">{node.name}</h2>
         <CopyName name={node.name} />
       </div>
 
@@ -367,7 +411,7 @@ export function NodeDetail({ node, historyDays, detailRemarks = true }: {
         </div>
       )}
 
-      <div className="space-y-2 border-t pt-4">
+      <div className="space-y-2 border-t border-border/70 pt-4">
         <div className="flex gap-1">
           {TABS.map((t) => (
             <Tab key={t.key} active={tab === t.key} onClick={() => chooseTab(t.key)}>
@@ -407,17 +451,21 @@ export function NodeDetail({ node, historyDays, detailRemarks = true }: {
           React 卸载，整页空白。2026-10-09 在演示站实测到；metricRows 已经兜过底
           （`data?.metrics ?? []`），长度口径一致。回归哨兵见 tools/verify_detail_charts.mjs 的「三」。 */}
       {!data ? (
-        <Skeleton className="h-40 w-full" />
+        <div className="rounded-2xl border bg-card px-4 py-3 shadow-lg shadow-border/60 dark:shadow-none">
+          <Skeleton className="h-40 w-full" />
+        </div>
       ) : failed ? (
-        <p className="py-8 text-center text-sm text-destructive" role="alert">读取历史数据失败：{failed}</p>
+        <EmptyPanel tone="error">读取历史数据失败：{failed}</EmptyPanel>
       ) : tab === "latency" ? (
         pingSeries.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">这段时间没有延迟数据</p>
+          <EmptyPanel>这段时间没有延迟数据</EmptyPanel>
         ) : (
           // An explicit pixel height on the column, so the chart can be `flex-1`
           // within it while the legend takes what it needs: four probes are one row
           // of chips on a desktop and two on a phone, so any fixed reservation is
           // wrong on one of them.
+          // 高度仍钉在**这一层**（`100svh - 顶 - 1rem`），白卡 `h-full` 填进来 —— 卡壳的 26px 在
+          // 这一层之内，所以「一屏放得下、不滚动」的性质与从前完全一样（verify_detail_charts 断它）。
           <div
             // `+ scrollY`, because getBoundingClientRect is measured from the
             // viewport and this callback runs on every render; a live node
@@ -425,7 +473,9 @@ export function NodeDetail({ node, historyDays, detailRemarks = true }: {
             // height from a top that has moved.
             ref={(el) => { if (el) setChartTop(el.getBoundingClientRect().top + scrollY) }}
             style={chartTop ? { height: `calc(100svh - ${Math.round(chartTop)}px - 1rem)` } : undefined}
-            className="flex min-h-72 flex-col gap-3">
+            className="h-full min-h-72">
+            <Panel fill title="网络延迟">
+            <div className="flex h-full min-h-0 flex-col gap-3">
             {/* `min-h-0` is what makes `flex-1` a real number rather than the
                 content's own height: ResponsiveContainer reads its parent, and
                 a flex child not told it may shrink reports whatever the SVG
@@ -516,10 +566,12 @@ export function NodeDetail({ node, historyDays, detailRemarks = true }: {
               })}
             </div>
             )}
+            </div>
+            </Panel>
           </div>
         )
       ) : metricRows.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">这段时间没有历史数据</p>
+        <EmptyPanel>这段时间没有历史数据</EmptyPanel>
       ) : (
         <div className="space-y-5">
           <Panel title="CPU">

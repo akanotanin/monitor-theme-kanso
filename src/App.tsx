@@ -92,9 +92,12 @@ function DetailSkeleton({ hasRemarks = false, hasConnections = false }: { hasRem
       </div>
       {/* 四张资源图：整页详情的默认页签就是它，所以骨架照它的高度来。
           ★它是上面那个页签块的**兄弟**（真实页里也是），别嵌进去。 */}
-      <div className="space-y-5">
+      <div className="space-y-3">
         {[0, 1, 2, 3].map((i) => (
-          <div key={i}>
+          // 每块都照**白卡**摆（正文里的 Panel 2026-10-15 起就是卡）：
+          // 卡壳 = rounded-2xl + 1px 描边 + px-4 py-3，里面 h4(16+mb8) + h-40 图，
+          // 合计 12+24+160+12+2 = 210px。高度不硬编码，跟着这几层自己长——改卡壳时两边一起改。
+          <div key={i} className="rounded-2xl border bg-card px-4 py-3 shadow-lg shadow-border/60 dark:shadow-none">
             <Skeleton className="mb-2 h-4 w-16" />
             <Skeleton className="h-40 w-full" />
           </div>
@@ -218,7 +221,7 @@ function useTheme(siteMode: ThemeMode) {
     for (const old of head.querySelectorAll('meta[name="theme-color"]')) old.remove()
     const meta = document.createElement("meta")
     meta.name = "theme-color"
-    let color = dark ? "#0d0c0a" : "#fafafa"
+    let color = dark ? "#0d0c0a" : "#fafaf9"
     const probe = document.createElement("canvas")
     probe.width = probe.height = 1
     const ctx = probe.getContext("2d")
@@ -495,7 +498,7 @@ export default function App() {
               图标的命中区各向外 6px，正好在缝里相接，不多不少（8px 会重叠、护栏也会报）。
               滑动条藏起来（见 index.css 的 .header-tools）：它长在 sticky 顶栏里，露出来
               就是一条横杠；「还能滑」的提示由露一半的那枚图标给，与分组标签行一致。 */}
-          <div className="header-tools -my-1.5 flex min-w-0 items-center gap-3 overflow-x-auto px-1.5 py-1.5">
+          <div className="header-tools -my-1.5 -mr-1.5 flex min-w-0 items-center gap-3 overflow-x-auto px-1.5 py-1.5">
           {/* The panel is a separate app built into the hub, not part of this
               theme, so this is a navigation rather than a route. Icon only, with
               the wording in the tooltip: this row is a strip of icons, and a
@@ -553,7 +556,7 @@ export default function App() {
           // 见 tools/verify_card_form）。
           <div className="grid gap-3 md:grid-cols-2">
             {[0, 1, 2].map((i) => (
-              <Skeleton key={i} className="h-[231px]" />
+              <Skeleton key={i} className="h-[222px] rounded-2xl" />
             ))}
           </div>
         ) : (

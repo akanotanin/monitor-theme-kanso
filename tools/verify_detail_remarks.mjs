@@ -2,7 +2,8 @@
 //   · detailRemarks=true：有备注的机器点进详情，那一行小卡片出来（公开备注拆枚、正字面）
 //   · detailRemarks=false：整块不渲染（不占位）
 //   · 没写备注的机器：两种设置下都不占位
-//   · ★ 卡片那一侧一处都不摊（「简约」档口径）：列表页所有卡片的文本里「不出现」备注正字面
+//   · ★ 卡片那一侧摊的是**同一份**备注，但摊在底注那一行、最多 3 枚（2026-10-15 卡片改版后
+//     的口径；从前是「一处都不摊」）：有备注的机器卡片上就能看到那几枚，没写的没有。
 //   · 老 hub（没有 `public_remark` 这个 key）：按「这台没写备注」处理，不占位
 //
 // 匿名视图只下发**公开备注**（私有备注仅登录管理员可见、hub 侧决定，这里不模拟登录态），
@@ -105,7 +106,11 @@ const listChips = async () => {
   await goto('/')
   return JSON.parse(await js(`JSON.stringify({
     cards: [...document.querySelectorAll('[data-node-card]')].map((el) => el.innerText),
-    chips: document.querySelectorAll('[data-node-card] [data-remark-block], [data-node-card] [data-slot="badge"]').length,
+    // 卡片这一侧的备注小卡片挂在底注那一行（锚点 data-remark="card"）；整页详情那一块用的是
+    // data-remark-block —— 两者不许混：卡片上出现「详情页那一块」就是版式串了。
+    chips: [...document.querySelectorAll('[data-node-card]')].map((el) =>
+      [...el.querySelectorAll('[data-remark="card"] [data-slot="badge"]')].map((b) => b.innerText.trim())),
+    detailBlocks: document.querySelectorAll('[data-node-card] [data-remark-block]').length,
   })`))
 }
 
@@ -126,10 +131,22 @@ CONFIG = { detailRemarks: false }
 m = await detail(1)
 check('② detailRemarks=false：有备注也不渲染（不占位）', m.block === null, JSON.stringify(m.block))
 
-// ③ 卡片那一侧一处都不摊（简约档口径）
+// ③ 卡片那一侧的备注（2026-10-15 起摊在底注那一行、最多 3 枚；与「一处都不摊」的旧口径不同）
 CONFIG = { detailRemarks: true }
 const lt = await listChips()
-check('③ 卡片一处不摊：卡片上既没有备注块也没有备注字（开着也一样）', lt.chips === 0 && lt.cards.every((t) => !t.includes('MANAGED') && !t.includes('直连优化')), `块 ${lt.chips} 个；卡片 ${lt.cards.length} 张`)
+const cardChips = (name) => lt.chips[lt.cards.findIndex((t) => t.includes(name))] ?? null
+check('③ 卡片底注那一行：有备注的机器摊出那两枚（MANAGED / 直连优化）',
+  JSON.stringify(cardChips('有备注机')) === JSON.stringify(['MANAGED', '直连优化']), JSON.stringify(lt.chips))
+check('③ 卡片底注那一行：没写备注的两台一枚都不摊',
+  JSON.stringify(cardChips('干净机')) === '[]' && JSON.stringify(cardChips('老Hub机')) === '[]',
+  JSON.stringify(lt.chips))
+check('③ 卡片上不许出现「整页详情那一块」（锚点是 data-remark="card"，不是 data-remark-block）',
+  lt.detailBlocks === 0, `${lt.detailBlocks} 块`)
+check('③ 卡片这一侧的备注不受「详情页显示备注」开关影响（关掉详情页那一块也照摊）', (await (async () => {
+  CONFIG = { detailRemarks: false }
+  const off = await listChips()
+  return JSON.stringify(off.chips) === JSON.stringify(lt.chips)
+})()) === true)
 
 check('没有控制台异常', errors.length === 0, errors.slice(0, 2).join(' | '))
 

@@ -50,6 +50,9 @@
   /* 进度条按"越满越危险"上色，所以这里有真正的绿与琥珀：单色阶表达不了严重度。 */
   --ok: oklch(0.6 0.15 155);
   --warn: oklch(0.62 0.15 70);
+  /* 离线那一枚状态点与徽章用的红（2026-10-15 卡片改版时加的第三枚语义色，与 ok/warn 同族）：
+     亮色压亮度保证白卡上可读，暗色抬亮度，色相不变。 */
+  --down: oklch(0.58 0.19 25);
 }
 
 .dark {
@@ -104,6 +107,8 @@
   --chart-9: oklch(0.72 0.16 335);
   --ok: oklch(0.74 0.14 155);
   --warn: oklch(0.8 0.13 75);
+  /* 与亮色同一份色相，只抬亮度（见上面 --ok / --warn 的说明）。 */
+  --down: oklch(0.7 0.17 25);
 }
 
 @theme inline {
@@ -140,6 +145,7 @@
   --color-chart-9: var(--chart-9);
   --color-ok: var(--ok);
   --color-warn: var(--warn);
+  --color-down: var(--down);
 }
 
 @layer base {

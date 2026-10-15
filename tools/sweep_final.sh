@@ -10,6 +10,7 @@ OUT="shots/sweep-final.txt"
 export FARM_PORT=5899 ICON_PORT=5898
 for t in verify_appearance verify_icons verify_touch_targets verify_footer_credit \
          verify_search verify_detail_charts verify_title verify_farm_entry \
+         verify_card_form \
          verify_latency_min_span verify_detail_remarks verify_detail_preload \
          verify_offline_last verify_offline_time verify_visibility verify_hub141; do
   line=$(node "tools/$t.mjs" 2>&1 | grep -E "[0-9]+ PASS / [0-9]+ FAIL|ALL PASS|[0-9]+ 条通过|[0-9]+ 个视角通过|PASS [0-9]+ / FAIL [0-9]+|全部通过|FAIL [0-9]+ 条" | tail -1)

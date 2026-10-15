@@ -548,9 +548,11 @@ export default function App() {
           )
         ) : !nodes ? (
           // 还在等节点列表：骨架与卡片网格同一版式。
+          // 高度跟着卡片来 —— 2026-10-15 卡片改成参考站那一套（身份行 + 系统行 + 四个读数格 +
+          // 上传下载 + 总流量 + 底注）之后是 266px（1440 视口四列，见 tools/verify_card_form）。
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {[0, 1, 2].map((i) => (
-              <Skeleton key={i} className="h-72" />
+              <Skeleton key={i} className="h-[266px]" />
             ))}
           </div>
         ) : (

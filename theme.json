@@ -2,7 +2,7 @@
   "name": "kanso",
   "short": "kanso",
   "description": "自家制の极简探针（Monitor）主题：只留「简约」一档卡片形态，附搜索、详情页与明暗双色。",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "author": "akanotanin",
   "url": "https://github.com/akanotanin/monitor-theme-kanso",
   "config": [
@@ -15,7 +15,7 @@
       "key": "detailRemarks",
       "label": "详情页显示备注",
       "default": true,
-      "help": "备注在后台节点里填（公开给访客、私有给自己）；这一档只影响整页详情那一行小卡片。"
+      "help": "备注在后台节点里填（公开给访客、私有给自己）；这一档只影响整页详情那一行小卡片（列表卡片的底注行固定最多 3 枚）。"
     },
     {
       "type": "title",

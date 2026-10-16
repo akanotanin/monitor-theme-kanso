@@ -16,7 +16,7 @@ import { clockFor, innerTicks, quarters, timeTicks, zoomSpan } from "@/lib/forma
  *   · 悬停时画一条竖线 + 那枚自绘 tooltip（`ChartTooltip`，本来就跟 recharts 解耦，
  *     只是 props 恰好同形）。
  *
- * 尺寸跟着父容器走（`ResizeObserver`）：四张资源图挂在 `Panel` 的 `h-40` 里，
+ * 尺寸跟着父容器走（`ResizeObserver`）：资源图挂在 `Panel` 的 `h-40` 里，
  * 延迟图挂在 `flex-1` 里，两条路都得撑满。
  */
 export type ChartSeries = {
@@ -32,7 +32,7 @@ export type ChartSeries = {
 
 export type ChartRow = { ts: number } & Record<string, number | [number, number] | null | undefined>
 
-/** 左边留给 Y 轴刻度的宽度，与四张资源图原来的 `Y_WIDTH` 一致（否则各图 x 会错位）。 */
+/** 左边留给 Y 轴刻度的宽度，与资源图原来的 `Y_WIDTH` 一致（否则各图 x 会错位）。 */
 const LEFT = 68
 const RIGHT = 8
 const TOP = 6
@@ -127,7 +127,7 @@ export function TimeChart({
   /** 给读屏用的一句话（这张图画的是什么）。 */
   label?: string
   /**
-   * `zero`：Y 轴从 0 起、刻度是 `quarters(top)`（四张资源图）。
+   * `zero`：Y 轴从 0 起、刻度是 `quarters(top)`（资源图）。
    * `auto`：Y 轴按数据自身的量程取整齐刻度，且至少摊开 `AUTO_MIN_SPAN_RATIO` 那么宽
    *         （延迟轴——那些线路活在一条窄带里：锚到 0 会把抖动压平、贴着数据缩放又会
    *         把几 ms 的抖动放大成地震波，两头各有一道护栏；这就是原来
@@ -135,14 +135,14 @@ export function TimeChart({
    */
   domain?: "zero" | "auto"
   /**
-   * 左边留给 Y 轴刻度的宽度（四张资源图 68，延迟图 52，与原来逐像素一致）。
+   * 左边留给 Y 轴刻度的宽度（资源图 68，延迟图 52，与原来逐像素一致）。
    * （X 轴的缩放窗口随「横向拖选」在 2026-10-15 一起下线，`from`/`to` 两个 prop 已删。）
    */
   left?: number
   /**
    * 滚轮**纵向缩放**（延迟图开，2026-10-15 从母本搬来）：光标压着的那个值当锚点收放，
    * 一格滚轮约 ±14%，跨度下限 `ZOOM_MIN_SPAN`、顶端封顶 `zoomCapOf(数据顶端)`。
-   * 只在 `domain="auto"` 时有意义（零起点那四张资源图不缩放）。监听是**非 passive** 的：
+   * 只在 `domain="auto"` 时有意义（零起点那五张资源图不缩放）。监听是**非 passive** 的：
    * 要 `preventDefault` 住页面滚动 —— 光标在图上时滚轮归图，离开图面立刻还给页面。
    *
    * 同一个开关也带**拖着线平移**（2026-10-15 站长定的：原来是「横向拖选一段放大」，
@@ -162,7 +162,7 @@ export function TimeChart({
   // 累加会带上取整误差、拖久了会「滑」）。
   const panRef = useRef<{ y0: number; lo: number; hi: number; moved: boolean } | null>(null)
   const [yZoom, setYZoom] = useState<{ lo: number; hi: number } | null>(null)
-  // clipPath 的 id：每张图一个（延迟图与四张资源图会同页共存），`useId` 的冒号等字符剔掉。
+  // clipPath 的 id：每张图一个（延迟图与资源图会同页共存），`useId` 的冒号等字符剔掉。
   const cid = useId().replace(/[^a-zA-Z0-9_-]/g, "")
   // 换量程（`hours`）＝整页重新取数：横向缩放由调用方（NodeDetail）复位，纵向缩放归本组件管，
   // 跟它一起回自动（否则 1 小时画面上的纵缩会带到 30 天上去，量程对不上数据）。

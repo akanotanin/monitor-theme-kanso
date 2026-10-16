@@ -103,9 +103,7 @@ const PROBE = `(() => {
     return { w: l + rr + 1, h: u + d + 1, cx, cy }
   }
   const label = (el) => (el.getAttribute('aria-label') || el.getAttribute('title') || (el.querySelector('input') || {}).ariaLabel || (el.textContent || '').trim() || el.tagName).slice(0, 20)
-  // 搜索那格的命中区挂在 「.search-field」 这个 span 上（输入框是替换元素，::before 不生成），
-  // 所以它也要进来量 —— 量的是「手指点得到多大」，不是「输入框自己多大」。
-  const pick = (root) => [...root.querySelectorAll('button, a, input, [role="button"], .search-field')].filter((el) => {
+  const pick = (root) => [...root.querySelectorAll('button, a, input, [role="button"]')].filter((el) => {
     const r = el.getBoundingClientRect()
     const cs = getComputedStyle(el)
     return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && el.offsetParent !== null
@@ -181,13 +179,6 @@ check(`命中区都撑到 ≥${MIN}×${MIN}`,
   icons.length > 0 && icons.every((c) => c.hit.w >= MIN && c.hit.h >= MIN),
   JSON.stringify(icons.map((c) => `${c.label} ${c.hit.w}×${c.hit.h}`)))
 
-// ①b 搜索那一格：量外层 span（那圈挂它身上），并确认输入框自己还是 36×36（外观没动）
-const field = m.header.find((c) => (c.cls || '').includes('search-field') && c.tag === 'span')
-const input36 = m.header.find((c) => c.tag === 'input')
-check('搜索那一格：命中区 ≥44×44（那圈挂在框外的 span 上）',
-  !!field && field.hit.w >= MIN && field.hit.h >= MIN, field ? `${field.hit.w}×${field.hit.h}` : '没找到 .search-field')
-check('搜索输入框自己仍是 36×36（外观没动）', !!input36 && input36.box.w === 36 && input36.box.h === 36, input36 ? `${input36.box.w}×${input36.box.h}` : '没找到')
-
 // ② 站名（32 高）也是可点的，命中高度要够。
 const site = m.header.find((c) => c.box.h === 32)
 check('站名那格：盒子高度仍是 32（外观不动），命中高度 ≥44',
@@ -210,8 +201,7 @@ check('站名长时：整页仍没有横向溢出（只让图标带自己滚动�
 
 // ③ 相邻控件的命中区不许重叠：拿每个控件的中心点去问别人的命中区。
 const overlap = []
-// 只比「互相独立」的控件：搜索那格同时量了外层 span 与里面的 input（同一件事的两层），
-// 盒子互相包含的一对直接跳过，不然自己跟自己算重叠。
+// 盒子互相包含的一对直接跳过（同一件事的两层），不然自己跟自己算重叠。
 const nested = (a, b) => a.box.x <= b.box.x && a.box.y <= b.box.y && a.box.right >= b.box.right && a.box.bottom >= b.box.bottom
 for (const a of m.header) for (const b of m.header) {
   if (a === b || nested(a, b) || nested(b, a)) continue
@@ -219,16 +209,6 @@ for (const a of m.header) for (const b of m.header) {
   if (inside) overlap.push(`${b.label} 的中心（${b.hit.cx.toFixed(0)},${b.hit.cy.toFixed(0)}）落在 ${a.label} 的命中区里（${a.hit.w}×${a.hit.h} @${a.hit.cx.toFixed(0)},${a.hit.cy.toFixed(0)}）`)
 }
 check('相邻控件的命中区不重叠（撑过头会点错邻居）', overlap.length === 0, overlap.join('；') || '没有重叠')
-
-// ④ 触屏上的输入框（窄屏那行）与清空按钮。
-const row = await (async () => {
-  await js(`(() => { const b = [...document.querySelectorAll('header button')].find((x) => (x.getAttribute('title') || '').startsWith('搜索')); b && b.click() })()`)
-  await sleep(600)
-  return JSON.parse(await js(PROBE))
-})()
-const rowField = row.header.find((c) => (c.cls || '').includes('search-field'))
-check('窄屏那行输入框：命中区高度 ≥44（那圈挂在框外面的 span 上，输入框本身是替换元素不生成伪元素）',
-  !!rowField && rowField.hit.h >= MIN, rowField ? `${rowField.hit.w}×${rowField.hit.h}` : '没找到')
 
 console.log('\n二、详情页（量程 / 分段按钮）:')
 let d = await open('/node/1', 390, 844)
@@ -247,7 +227,7 @@ check('没到 44 的那两枚是被邻居卡住（面板那行太密），仍 �
   tight.every((c) => c.hit.h >= 24), JSON.stringify(tight.map((c) => `${c.label} ${c.hit.h}（盒子 ${c.box.h}）`)))
 
 console.log('\n三、仍然 <44 的控件（信息，不判 FAIL）:')
-const rest = [...d.main, ...d.header, ...row.main, ...row.header].filter((c) => c.hit.w < MIN || c.hit.h < MIN)
+const rest = [...d.main, ...d.header].filter((c) => c.hit.w < MIN || c.hit.h < MIN)
 const uniq = [...new Map(rest.map((c) => [c.label + c.box.w + 'x' + c.box.h, c])).values()]
 for (const c of uniq.slice(0, 10)) console.log(`   ${c.label} — 盒子 ${c.box.w}×${c.box.h}，命中 ${c.hit.w}×${c.hit.h}（.${c.cls}）`)
 check('没有控制台异常', errors.length === 0, errors.slice(0, 2).join(' | '))

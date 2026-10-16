@@ -3,7 +3,6 @@ import { Lock } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
-import { TextHighlight } from "@/components/TextHighlight"
 import { Meter } from "@/components/Meter"
 import type { Node } from "@/lib/api"
 import { CYCLE_SHORT, FOREVER, bytes, daysUntil, money, osName, pair, percent, rate, uptime } from "@/lib/format"
@@ -190,15 +189,11 @@ function trafficFoot(node: Node) {
  *
  * 不含延迟那一块——那在整页详情里看（点卡片进去）。
  */
-export function NodeCard({ node, onOpen, onWarm, terms, selected }: {
+export function NodeCard({ node, onOpen, onWarm }: {
   node: Node
   onOpen: () => void
   /** 指针或键盘刚落到这张卡片上：先把手头这块 chunk（详情页的图表）取回来。 */
   onWarm?: () => void
-  /** 搜索命中词：名字里描色（见 Highlight）。没在搜时是空数组。 */
-  terms?: string[]
-  /** 键盘光标（↑↓）停在这张卡上：加一圈描边。 */
-  selected?: boolean
 }) {
   const m = node.metrics
   // 有实时数据才点绿（与沉底同一判据，见 live）。
@@ -219,18 +214,15 @@ export function NodeCard({ node, onOpen, onWarm, terms, selected }: {
       // name line below does not wrap, so on a phone the card would grow past its
       // column and scroll the page sideways. The truncate inside only takes effect
       // once the card is allowed to be narrower.
-      // 键盘光标（搜索框里 ↑↓ 选中的那台）停在上面时加一圈 2px 描边：用 outline 而不是
-      // border/ring —— 不占盒宽、不改网格（用 border 会让这张卡大一圈、把邻居挤动）。
-      // data-node-card 是滚动定位（见 App 的 NodeList）与护栏共用的锚点；
-      // data-selected 是「当前被键盘选中」的标记（护栏读它，不用去解析类名）。
+      // data-node-card 是护栏共用的锚点（卡片网格的定位）。
+      // （2026-10-16 搜索删掉后，这里不再有「键盘选中」那圈 outline 与 data-selected。）
       data-node-card={node.id}
       data-status={on ? "on" : "off"}
       // ★可访问名给**机器的名字**（掉线时补一句）：role=button 的元素如果不给，读屏会把整张卡的
       //   文字当名字念出来（实测 ~190 字：名字、系统、四个读数、速率、流量、底注全在内）。
       //   卡里的读数仍然在可访问树里（它们不是装饰），只是名字短了（2026-10-15 审出来）。
       aria-label={on ? node.name : `${node.name}（已离线）`}
-      data-selected={selected ? "1" : undefined}
-      className={`min-w-0 cursor-pointer gap-0 px-4 py-3 transition-colors hover:border-foreground/25 ${selected ? "outline-2 outline-offset-1 outline-ring" : ""}`}
+      className="min-w-0 cursor-pointer gap-0 px-4 py-3 transition-colors hover:border-foreground/25"
       role="button"
       tabIndex={0}
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen())}
@@ -241,14 +233,13 @@ export function NodeCard({ node, onOpen, onWarm, terms, selected }: {
             与原来「绿色点＝正常」相比少一处颜色噪音（一页 30 张卡就是 30 个绿点）。
           ★`data-status`（on / off）改挂在**卡根**上（见下面那个 div）：它是护栏的锚点，
             别再去卡里找那枚点（点没了，`querySelector('[data-status]')` 会返回 null）。
-          名字加粗一档（参考站是 600）。搜索命中处描色（Highlight：mark 不改变 textContent，
-          既有文案断言照旧；没在搜时它原样返回，零影响）。 */}
+          名字加粗一档（参考站是 600）。 */}
       {/* ★定高 22px：名字行本身 20px（text-sm / leading-5），而「已离线」徽章 22px（text-xs 16 + py-0.5 4
           + border 2）—— 不定高的话，掉线那台就比邻居高 2px。定高之后徽章照旧居中，
           有/无徽章一律 22px（2026-10-15 站长要求「卡片大小与备注无关」时顺手一起钉平）。 */}
       <div className="flex h-[22px] min-w-0 items-center gap-2">
         <Country node={node} />
-        <h3 className="min-w-0 flex-1 truncate text-sm font-semibold leading-5 tracking-tight"><TextHighlight text={node.name} terms={terms} /></h3>
+        <h3 className="min-w-0 flex-1 truncate text-sm font-semibold leading-5 tracking-tight">{node.name}</h3>
         {/* 徽章只给「接入过、现在掉线」的机器：从未接入的卡片下面那行说明已经说清了，
             连上但还没上报的更不该被盖上「已离线」。 */}
         {deployed(node) && !node.online && (

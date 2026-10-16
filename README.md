@@ -1,6 +1,6 @@
 # kanso
 
-![kanso](preview.png?v=8)
+![kanso](preview.png?v=9)
 
 极简探针（[Monitor](https://github.com/monitor-probe/monitor)）的第三方主题，源码基于上游默认主题
 `monitor-theme-default` v1.1.0 改造。纯静态前端，只读 hub 的公开接口，
@@ -14,7 +14,7 @@
 
 | 亮色 | 暗色 | 手机 |
 |:---:|:---:|:---:|
-| ![预览](preview-light.png?v=8) | ![暗色](preview-dark.png?v=8) | ![手机](preview-mobile.png?v=8) |
+| ![预览](preview-light.png?v=9) | ![暗色](preview-dark.png?v=9) | ![手机](preview-mobile.png?v=9) |
 
 
 ## 关于备注

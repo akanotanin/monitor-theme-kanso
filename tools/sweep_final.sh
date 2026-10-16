@@ -9,7 +9,7 @@ OUT="shots/sweep-final.txt"
 # 统一给它们错开端口（两支各自认 FARM_PORT / ICON_PORT）。残留 serve 占着 5199 时先杀掉再判真红假红。
 export FARM_PORT=5899 ICON_PORT=5898
 for t in verify_appearance verify_icons verify_touch_targets verify_footer_credit \
-         verify_search verify_detail_charts verify_title verify_farm_entry \
+         verify_detail_charts verify_title verify_farm_entry \
          verify_card_form \
          verify_latency_min_span verify_detail_remarks verify_detail_preload \
          verify_offline_last verify_offline_time verify_visibility verify_hub141; do

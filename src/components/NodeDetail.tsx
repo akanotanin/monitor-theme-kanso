@@ -18,6 +18,9 @@ type Point = {
   disk_used: number
   net_rx: number
   net_tx: number
+  /** 连接条数（hub 的历史桶里带着 `tcp / udp`；老 hub 的桶可能没有这个键——图会自行留白）。 */
+  tcp?: number | null
+  udp?: number | null
 }
 // `latency` is the bucket's median round trip, null when every probe in it timed
 // out. `band` is the range its answers spanned, absent when they spanned nothing.
@@ -277,12 +280,19 @@ export function NodeDetail({ node, historyDays }: {
   const tops = useMemo(() => {
     const max = (pick: (m: Point) => number) =>
       metricRows.reduce((hi, m) => Math.max(hi, pick(m)), 0)
+    const connTop = axisTop(max((m) => Math.max(m.tcp ?? 0, m.udp ?? 0)), 4, 10)
     return {
       // A floor of 4%, or a machine that never exceeds 0.4% would get an axis of
       // 0-0.4 and render every scheduler blip as a peak. Capped at 100.
       cpu: axisTop(max((m) => m.cpu), 4, 10, 100),
       // Base 1024, so the steps are round in the unit `axisBytes` prints.
       rate: axisTop(max((m) => Math.max(m.net_rx, m.net_tx)), 1024, 1024),
+      // ★2026-10-16（TCP / UDP 面板）：连接条数没有容量可比 —— 取窗口里两条线的最大值为准；
+      //   下限 4（空窗 / 老 hub 缺键时轴也站得住），不封顶（流量大的机器 tcp 上千是常态）。
+      // ★（同轮审出）连接数是计数，四分刻度不能带 x.5：axisTop 的阶梯含 1.5 / 2.5 / 7.5，
+      //   峰值落在 (4,6] / (8,10] / (20,30] 时轴顶会是 6 / 10 / 30。把轴顶补到 4 的倍数
+      //   （6→8、10→12、30→32），任何峰值下四分刻度都是整数。
+      conn: connTop + ((4 - (connTop % 4)) % 4),
     }
   }, [metricRows])
 
@@ -362,14 +372,11 @@ export function NodeDetail({ node, historyDays }: {
       {/* One flat row of facts: what is left after the traffic figures moved
           out is one machine's spec sheet, and a box around a single topic is
           just a box. Three across at lg, two at md, one on a phone -- a kernel
-          version or a CPU model needs about 270px to stay whole. */}
+          version or a CPU model needs about 270px to stay whole.
+          ★2026-10-16 站长定的次序：系统 → 架构 → TCP / UDP 连接打头（一台机器的「身份」），
+            再是 CPU / 内存 / 今日流量，在线时间收尾。 */}
       <dl className="grid gap-x-6 gap-y-3 md:grid-cols-2 lg:grid-cols-3">
         <Fact label="系统" value={[osName(node.os), node.kernel].filter(Boolean).join(" · ")} />
-        <Fact
-          label="CPU"
-          value={node.cpu_name ? `${cpuName(node.cpu_name)} × ${node.cpu_cores}` : `${node.cpu_cores} 核`}
-        />
-        <Fact label="内存 / 硬盘" value={`${bytes(node.mem_total)} / ${bytes(node.disk_total)}`} />
         <Fact
           label="架构"
           value={[node.arch, node.virt !== "none" ? node.virt : "", m ? `${m.procs} 进程` : ""]
@@ -377,10 +384,15 @@ export function NodeDetail({ node, historyDays }: {
             .join(" · ")}
         />
         {/* 连接数：hub 的实时上报里带着 TCP / UDP 连接条数（`metrics.tcp / udp`）。
-            ★2026-10-15 站长要求合成**一格**、写法照上面那格「内存 / 硬盘」：标签 `TCP / UDP 连接`、
+            ★2026-10-15 站长要求合成**一格**、写法照「内存 / 硬盘」那格：标签 `TCP / UDP 连接`、
             值 `17 / 3`。离线机器 `metrics` 是 null，这一格随 Fact 的既有口径一起隐身
             ——「没有这个值」本来就不该占格子。 */}
         <Fact label="TCP / UDP 连接" value={m ? `${m.tcp} / ${m.udp}` : null} />
+        <Fact
+          label="CPU"
+          value={node.cpu_name ? `${cpuName(node.cpu_name)} × ${node.cpu_cores}` : `${node.cpu_cores} 核`}
+        />
+        <Fact label="内存 / 硬盘" value={`${bytes(node.mem_total)} / ${bytes(node.disk_total)}`} />
         <Fact label="今日流量" value={`↓ ${bytes(node.day_rx)} · ↑ ${bytes(node.day_tx)}`} />
         {/* 最后一格是「在线时间」：取代原先标题行上那枚状态徽章。它顶掉的是「续费」
             那一格——公开页的访客关心这台机器还活着多久，价格与到期在后台看。 */}
@@ -548,6 +560,43 @@ export function NodeDetail({ node, historyDays }: {
         <EmptyPanel>这段时间没有历史数据</EmptyPanel>
       ) : (
         <div className="space-y-5">
+          {/* ★2026-10-16 站长定稿的次序：网络速率与 TCP / UDP 连接打头（在 CPU 之前），
+              其后 CPU / 内存 / 硬盘。 */}
+          {/* A rate has no total to be a fraction of, so this one climbs the
+              ladder like CPU rather than pinning to a capacity. */}
+          <Panel title="网络速率">
+            <TimeChart
+              rows={metricRows}
+              series={[
+                { key: "net_rx", name: "下行", color: "var(--ok)" },
+                { key: "net_tx", name: "上行", color: "var(--chart-2)" },
+              ]}
+              hours={hours}
+              top={tops.rate}
+              unit="/s"
+              yFormat={axisBytes}
+              format={(v) => rate(v)}
+              label="网络速率走势"
+            />
+          </Panel>
+
+          {/* ★2026-10-16 站长要求新增：TCP / UDP 连接的条数走势，两条线各一个色相
+              （TCP 蓝 / UDP 粉）。数据就在同一次历史指标（metrics）响应的 `tcp / udp` 两列里
+              （hub 1.4.x 的 metrics 桶实测带这两个键）。口径与其余几张同款、
+              只是不填面积：连接数是计数，不是「占了多少容量」。 */}
+          <Panel title="TCP / UDP 连接">
+            <TimeChart
+              rows={metricRows}
+              series={[
+                { key: "tcp", name: "TCP", color: "var(--chart-1)" },
+                { key: "udp", name: "UDP", color: "var(--chart-9)" },
+              ]}
+              hours={hours}
+              top={tops.conn}
+              label="TCP / UDP 连接数走势"
+            />
+          </Panel>
+
           <Panel title="CPU">
             <TimeChart
               rows={metricRows}
@@ -574,24 +623,6 @@ export function NodeDetail({ node, historyDays }: {
               yFormat={axisBytes}
               format={(v) => bytes(v)}
               label="内存使用量走势"
-            />
-          </Panel>
-
-          {/* A rate has no total to be a fraction of, so this one climbs the
-              ladder like CPU rather than pinning to a capacity. */}
-          <Panel title="网络速率">
-            <TimeChart
-              rows={metricRows}
-              series={[
-                { key: "net_rx", name: "下行", color: "var(--ok)" },
-                { key: "net_tx", name: "上行", color: "var(--chart-2)" },
-              ]}
-              hours={hours}
-              top={tops.rate}
-              unit="/s"
-              yFormat={axisBytes}
-              format={(v) => rate(v)}
-              label="网络速率走势"
             />
           </Panel>
 

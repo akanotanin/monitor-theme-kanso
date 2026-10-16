@@ -204,28 +204,12 @@
 .theme-credit a { color: inherit; text-decoration: none; }
 .theme-credit a:hover { text-decoration: underline; }
 
-/* 顶栏那个搜索框（src/components/SearchBox.tsx）：
-   ① `type="search"` 在 WebKit 里自带一枚小叉，关掉它 —— 框里已经有一枚自己的清空按钮，
-      两个长得差不多、做同一件事的按钮并排只会让人犹豫点哪个；
-   ② **清空那枚只在框长开着（有焦点）时出现**：收起时那一格只有 36px，放大镜已经占满，
-      再挤一枚叉就成了「两枚图标叠在一起」。展开／收起的动效由 `transition-all` 负责。 */
-.search-input::-webkit-search-cancel-button,
-.search-input::-webkit-search-decoration { -webkit-appearance: none; appearance: none; }
-/* ★ position: absolute 必须写在这里（而不是只写在组件的类名里）：组件类名里的 `absolute`
-   是 Tailwind 的分层工具类，而 `.tap` 的 `position: relative`（本文件、未分层）在级联顺序上
-   压过它 —— 按钮于是落回 flex 流、被满宽的 input 顶到容器右缘之外（2026-10-12 站长实拍：
-   清空按钮右沿超出输入框 16px，看起来贴在边框外/角上）。未分层对未分层按特异性裁决：
-   `.search-field .search-clear`（0,2,0）> `.tap`（0,1,0) ✓。垂直居中交给容器的
-   `align-items: center` 对绝对定位子元素的 static position（挺标准的做法，Chrome/Safari/FF 都按规范实现）。 */
-.search-field .search-clear { display: none; position: absolute; }
-.search-field:focus-within .search-clear { display: grid; }
-
 /* 触屏命中区：**外观一点不动，只把可点范围往外撑**。
    手指比鼠标粗 —— Apple 的通行线是 44×44，WCAG 2.2 的硬线（2.5.8）是 24×24。
    撑出来的那圈是 ::before，透明、不参与布局，所以排版、间距、视觉都不受影响；
    命中测试时它算作所属元素（`document.elementFromPoint` 返回的是宿主元素）。
    类名跟着控件自己的高度走（size-9 = 36px 等），一眼看得出撑完是多少：
-     tap-9   36×36 → 44×44（顶栏那几枚图标、搜索方框）
+     tap-9   36×36 → 44×44（顶栏那几枚图标）
      tap-8   32 高  → 44    （站名）
      tap-y-6 24 高  → 44 高，横向不动 —— 密排的分段按钮之间别互相盖住。 */
 /* `.tap` 与 Tailwind 的 `.absolute` 都是单类选择器（0,1,0），而 `.tap` 写在 Tailwind 层之后，

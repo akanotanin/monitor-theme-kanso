@@ -262,7 +262,7 @@ check('掉线那台也摊备注（一枚「优化线路」）', JSON.stringify(d
 check('没写备注的那几台：卡片上没有任何小卡片', idle?.chips.length === 0 && unlim?.chips.length === 0)
 check('备注小卡片与底注同一行（右侧、不与价格那截重叠）',
   (await js(`(() => {
-    const c = document.querySelector('[data-node-card][data-selected], [data-node-card]')
+    const c = document.querySelector('[data-node-card]')
     const chips = c.querySelector('[data-remark="card"]')
     const note = [...c.querySelectorAll('span')].find((s) => /^价格|^剩余/.test(s.textContent.trim()))
     if (!chips || !note) return false

@@ -42,8 +42,8 @@ if (!existsSync(MASCOT)) {
 
 // 角色与文案的尺寸：改这里就能重新出图，数字都是按「文字右沿 ↔ 角色左轮廓」实测空档定的。
 // 角色图 1024×1024，左轮廓在 ~8%（内容从 8% 处开始），右/下是切边；ch 是贴在画布上的 CSS 高。
-const PURE = { ch: 700, h1: 200, kicker: 18, sub: 36, feats: 25, block: 700 }
-const PURE_BIG = { ch: 760, h1: 216, kicker: 19, sub: 38, feats: 26, block: 720 }
+const PURE = { ch: 700, h1: 200, kicker: 18, sub: 36, block: 700 }
+const PURE_BIG = { ch: 760, h1: 216, kicker: 19, sub: 38, block: 720 }
 // 带长条的形态：长条高度 = 截图的自然比例，角色底边压在长条上沿
 const BANDS = {
   // 长条内容：顶栏 + 第一行卡片完整 + 第二行露头（height 360 = 100 起卡片 + 218 卡高 + 12 缝 + 30 露头）
@@ -63,34 +63,30 @@ body{position:relative}
 .kicker{letter-spacing:.22em;color:var(--soft);text-transform:uppercase}
 h1{font-weight:700;letter-spacing:-.022em;line-height:1}
 .sub{color:var(--mid)}
-.rule{height:1px;background:var(--line)}
-.feats{color:var(--mid)}
 .mascot{filter:drop-shadow(0 18px 32px rgba(28,25,23,.10))}
 </style></head><body>`
 
-const copy = (feats) => `<div class="copy">
+/**
+ * 左栏文案（2026-10-16 站长定稿）：封面去掉卖点两行与那条分隔线 —— 只留 kicker / kanso /
+ * 副标题三层。单侧信息越克制，和右侧角色的「繁」对比反而越清楚（B 版试验稿一眼通过）。
+ */
+const copy = () => `<div class="copy">
   <div class="kicker">Monitor Theme</div>
   <h1>kanso</h1>
-  <div class="sub">自家制の极简探针（Monitor）主题</div>
-  <div class="rule"></div>
-  <div class="feats">${feats}</div>
+  <div class="sub">简素の极简探针（Monitor）主题</div>
 </div>`
-const FEATS2 = '单档宽卡 · 整页详情 · 图表交互<br>备注标签 · 搜索筛选 · 明暗双色'
-const FEATS1 = '单档宽卡 · 整页详情 · 图表交互 · 备注标签 · 明暗双色'
 
 let html
 if (FORM === 'pure' || FORM === 'pure-big') {
-  const { ch, h1, kicker, sub, feats, block } = FORM === 'pure' ? PURE : PURE_BIG
+  const { ch, h1, kicker, sub, block } = FORM === 'pure' ? PURE : PURE_BIG
   html = `${head}
 <img class="mascot" src="${uri(MASCOT, 'image/png')}">
-${copy(FEATS2)}
+${copy()}
 <style>
 .copy{position:absolute;left:96px;top:50%;transform:translateY(-50%);width:${block}px}
 .kicker{font-size:${kicker}px}
 h1{font-size:${h1}px;margin-top:${Math.round(h1 * 0.2)}px}
 .sub{font-size:${sub}px;margin-top:${sub}px}
-.rule{width:${Math.round(h1 * 1.7)}px;margin:${sub}px 0}
-.feats{font-size:${feats}px;line-height:1.95}
 .mascot{position:absolute;right:-4px;bottom:-10px;height:${ch}px}
 </style></body></html>`
 } else if (FORM === 'band') {
@@ -106,7 +102,7 @@ h1{font-size:${h1}px;margin-top:${Math.round(h1 * 0.2)}px}
   html = `${head}
 <img class="mascot" src="${uri(MASCOT, 'image/png')}">
 <div class="band"><img src="${uri(band.file, 'image/png')}"></div>
-${copy(FEATS1)}
+${copy()}
 <style>
 .band{position:absolute;left:0;right:0;bottom:0;height:${band.height}px;overflow:hidden;box-shadow:0 -16px 32px -20px rgba(28,25,23,.14)}
 .band::before{content:"";position:absolute;top:0;left:0;width:${W - band.right - band.ch + M_PAD}px;height:1px;background:var(--line)}
@@ -116,8 +112,6 @@ ${copy(FEATS1)}
 .kicker{font-size:13px}
 h1{font-size:72px;margin-top:14px}
 .sub{font-size:19px;margin-top:14px}
-.rule{width:180px;margin:20px 0}
-.feats{font-size:16px}
 .mascot{position:absolute;right:${band.right}px;bottom:${band.height - overlap}px;height:${band.ch}px}
 </style></body></html>`
 } else {

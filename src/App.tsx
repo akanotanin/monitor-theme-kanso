@@ -2,11 +2,9 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useS
 import { Moon, Sun, Wrench } from "lucide-react"
 
 import { NodeCard } from "@/components/NodeCard"
-import { SearchBox, SearchRow } from "@/components/SearchBox"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api, useNodes, type Node } from "@/lib/api"
-import { searchNodes } from "@/lib/search"
 import { useLocalFarm } from "@/lib/farm-entry"
 import { FarmIcon } from "@/components/FarmIcon"
 
@@ -36,16 +34,16 @@ const loadDetail = () => import("@/components/NodeDetail").then((m) => ({ defaul
 const NodeDetail = lazy(loadDetail)
 
 /**
- * 详情页的骨架：按详情页真实的那几块摆（标题行 + 规格格 + 页签行 + 四张图），
+ * 详情页的骨架：按详情页真实的那几块摆（标题行 + 规格格 + 页签行 + 五张图），
  * 不是一枚 `h-96`。它露面的场景只有一个 —— 点开时图表 chunk 还没到（见下面 warmDetail），
  * 所以它的高度必须跟加载完的内容一样，否则那一下会「先塌再撑」。
  *
  * 尺寸不另立一套，全跟着详情页自己那几块的类走：`dt` text-xs(16) + `dd` text-sm(20)、
- * 页签 py-1 + text-xs = 24、图块 = 小标题 mb-2 + `h-40`、四张图之间 space-y-5、
+ * 页签 py-1 + text-xs = 24、图块 = 小标题 mb-2 + `h-40`、五张图之间 space-y-5、
  * 规格格那层用同一套 grid 断点。于是手机上（一列）与桌面上（三列）都自动对上。
  *
  * ★两处「差一块就差几十 px」的地方（都踩过，护栏 verify_detail_preload 会照出来）：
- *   ① **四张图是页签块的兄弟、不是孩子** —— 嵌进去的话，页签与图之间那 16px 变成 8px，
+ *   ① **五张图是页签块的兄弟、不是孩子** —— 嵌进去的话，页签与图之间那 16px 变成 8px，
  *      整页少 8px；（2026-10-06 修）
  *   ② **TCP / UDP 连接那一格**（2026-10-15 修）—— 详情页 2026-10-14 加了连接数、2026-10-15
  *      合成一格（真实页 7 格），骨架还画 6 格：桌面三列多出一行（+48px）、手机一列多出两行（+96px）。
@@ -81,10 +79,12 @@ function DetailSkeleton({ hasConnections = false }: { hasConnections?: boolean }
           <Skeleton className="h-6 w-16" />
         </div>
       </div>
-      {/* 四张资源图：整页详情的默认页签就是它，所以骨架照它的高度来。
-          ★它是上面那个页签块的**兄弟**（真实页里也是），别嵌进去。 */}
-      <div className="space-y-3">
-        {[0, 1, 2, 3].map((i) => (
+      {/* 五张资源图：整页详情的默认页签就是它，所以骨架照它的高度来。
+          ★它是上面那个页签块的**兄弟**（真实页里也是），别嵌进去。
+          ★2026-10-16：这一层原来误用 `space-y-3`（真实页是 `space-y-5`，四张图就差 24px ——
+          恰好贴着护栏 ±24 的容差边缘没被照出来）；加第五张图后差额会到 32px，一并改对。 */}
+      <div className="space-y-5">
+        {[0, 1, 2, 3, 4].map((i) => (
           // 每块都照**白卡**摆（正文里的 Panel 2026-10-15 起就是卡）：
           // 卡壳 = rounded-2xl + 1px 描边 + px-4 py-3，里面 h4(16+mb8) + h-40 图，
           // 合计 12+24+160+12+2 = 210px。高度不硬编码，跟着这几层自己长——改卡壳时两边一起改。
@@ -102,47 +102,29 @@ function DetailSkeleton({ hasConnections = false }: { hasConnections?: boolean }
 // leaves the detail view rather than the site. The hub serves index.html for any
 // unknown path, so no server-side route is required.
 //
-// ★ 搜索词也在地址栏里（`/?q=…`）：刷新、收藏、分享都带着当时的搜索；详情页的地址同样带着它，
-//   于是「后退 / 前进」在列表与详情之间来回时，每一屏连搜索一起复原——URL 是状态的唯一来源，
-//   内存只是它的一份镜像。只带**有值**的项：清掉搜索就回到干净的 `/`。
-type ListState = { q: string }
-
-/** 从地址栏读搜索词（首次加载与 popstate 各读一次）。 */
-function readListState(): ListState {
-  const p = new URLSearchParams(location.search)
-  return { q: p.get("q") ?? "" }
-}
-
-/** 列表 / 详情共用的地址串：有搜索词才带；详情页可选再带 `?tab=`。 */
-function pageUrl(id: number | null, s: ListState): string {
-  const p = new URLSearchParams()
-  if (s.q.trim() !== "") p.set("q", s.q)
-  const qs = p.toString()
-  return `${id === null ? "/" : `/node/${id}`}${qs ? `?${qs}` : ""}`
-}
-
-function useNodeRoute(onPop: (s: ListState) => void) {
+// ★（2026-10-16）搜索整个删掉后，地址栏只剩两个地址：列表是 `/`、详情是 `/node/{id}`。
+//   没有别的状态要复原，「后退 / 前进」就只是把 id 从路径里读回来。
+function useNodeRoute() {
   const read = () => {
     const match = location.pathname.match(/^\/node\/(\d+)/)
     return match ? Number(match[1]) : null
   }
   const [id, setId] = useState(read)
   useEffect(() => {
-    const sync = () => {
-      setId(read())
-      // 后退/前进也把筛选三件套从地址栏恢复：历史里每个条目都记着当时的筛选，落在哪一条就回哪一屏。
-      onPop(readListState())
-    }
+    const sync = () => setId(read())
     addEventListener("popstate", sync)
     return () => removeEventListener("popstate", sync)
-  }, [onPop])
+  }, [])
   return [
     id,
-    (next: number | null, url?: string) => {
-      const target = url ?? (next === null ? "/" : `/node/${next}`)
+    (next: number | null) => {
+      const target = next === null ? "/" : `/node/${next}`
       // ★同址不 push（2026-10-15 审出来）：站名按钮在列表页点一下也会 push 一条与当前逐字相同的
       //   记录，之后「后退」第一次看着像没反应（URL 没变、页面没动）。相同就只回到顶部。
-      if (target !== location.pathname + location.search) history.pushState({}, "", target)
+      // ★（2026-10-16 审出）判据只看 pathname、不看查询串：搜索删掉后列表地址可能残留 `?q=…`
+      //   （老书签 / 历史条目），带着查询串比会把「同一个列表」当换址、再 push 一条死记录。
+      //   详情页 `?tab=` 由页签自己写，也不该参与这里的判断。
+      if (target !== location.pathname) history.pushState({}, "", target)
       setId(next)
       scrollTo(0, 0)
     },
@@ -242,42 +224,7 @@ export default function App() {
   const [me, setMe] = useState<Me | null>(null)
   const [meError, setMeError] = useState("")
   const { nodes, error, closed } = useNodes()
-  // 顶栏那个搜索框：词与「窄屏那一行展开了没」都留在这儿 —— 进详情页再回来，搜到的那几台还在。
-  const [query, setQuery] = useState(() => readListState().q)
-  const [searchOpen, setSearchOpen] = useState(false)
-  // 搜索键盘导航：↑↓ 在**命中列表**里移动的那一格（下标，null = 没选）。词一变就清零
-  // （命中的那批换了，之前选到「第几台」已经没有意义）；显示时再按当前命中数夹一次。
-  const [cursor, setCursor] = useState<number | null>(null)
-  // popstate（后退/前进）时把搜索词从地址栏恢复 —— 与详情 id 同一趟同步。
-  const onPop = useCallback((s: ListState) => {
-    setQuery(s.q)
-    setCursor(null)
-  }, [])
-  const [open, go] = useNodeRoute(onPop)
-  // 收起搜索（Esc 在空框上按的那一下）。**不清词**：收起是「让出顶栏那点宽度」，不是「别筛了」
-  // —— 词留着，点开一台机器看清了再回来，那几台还在（收起态会看不见词，所以那枚放大镜会提色、
-  // 悬停说明里带上词与命中数，见 SearchBox）。
-  const collapseSearch = () => setSearchOpen(false)
-  // 窄屏那枚方形图标＝顶栏下面那一行的开关；桌面什么都不用做（CSS 的 :focus-within 自己长开）。
-  // 用 matchMedia 而不是把它存成 state：这里只在事件里问一次，没必要为它挂一条媒体查询订阅。
-  const onSearchActivate = () => {
-    const narrow = typeof matchMedia === "function" && matchMedia("(max-width: 639px)").matches
-    setSearchOpen((was) => (narrow ? !was : false))
-  }
-  // 窄屏那一行收起：连词一起清掉 —— 那一行是「临时张开的一块地方」，收起后顶栏上看不见它，
-  // 留着词就成了看不见的筛选。（桌面那套不一样：收起态本来就是那枚图标，词留着有据可依。）
-  // 清词的同时把键盘光标也归零（见上面的 cursor）。
-  const closeSearchRow = () => {
-    setSearchOpen(false)
-    setQuery("")
-    setCursor(null)
-  }
-  // 搜索词的唯一入口：词一变就把键盘光标归零（↑↓ 选的「第几台」属于上一批命中，
-  // 命中集合换了就不该悄悄指向另一台机器）。SearchBox / SearchRow 两处都走它。
-  const changeQuery = (next: string) => {
-    setQuery(next)
-    setCursor(null)
-  }
+  const [open, go] = useNodeRoute()
 
   const loadMe = useCallback(() => {
     // `|| "..."` because an empty message reads as no error: api() falls back to
@@ -355,54 +302,17 @@ export default function App() {
   // 重连后一个上报间隔内也是这个长相）——卡面读数全是「—」，跟离线机一样不该占在线段的
   // 位置。「离线」（`online` 为假：曾接入掉线 / 从未接入）走同一条。
   // 仍按站长排序（`sort`，并列再按 `id`），所以这只是在排序键前面加了一层「有数据 0 /
-  // 没有 1」——同一台机器在两次帧之间的位置是确定的，不会自己抖动。搜索那一层筛选就是在
-  // 这份排好序的列表上切的。
-  // ★排序与筛选都记忆化（2026-10-15 审出来）：原来每敲一个字、每 2 秒一帧数据都要重排一遍
-  //   （searchNodes 还会给每台机器拼一遍搜索文本）。键就是它们的两个输入。
+  // 没有 1」——同一台机器在两次帧之间的位置是确定的，不会自己抖动。
+  // ★排序记忆化（2026-10-15 审出来）：原来每 2 秒一帧数据都要重排一遍。键就是它的输入。
   const sorted = useMemo(() => [...(nodes ?? [])].sort((a, b) => {
     const hasData = (n: typeof a) => Number(!!(n.online && n.metrics))
     return hasData(b) - hasData(a) || a.sort - b.sort || a.id - b.id
   }), [nodes])
   const selected = sorted.find((n) => n.id === open)
-  // 搜索是列表上唯一一层筛选（口径见 @/lib/search）：下面那张列表与键盘导航都吃这一份。
-  const found = useMemo(() => searchNodes(sorted, query), [sorted, query])
 
-  /**
-   * 搜索词变了就把地址栏跟手更新（`replaceState`）。
-   *
-   * 为什么是 replace 而不是 push：搜索的每一次调整（敲一个字）不该往历史里塞一整条条目 ——
-   * 否则「后退」得按十几下才退出这一页。replace 让历史里始终只留「列表（当时搜索）→ 详情」
-   * 这种有意义的两跳，后退一步就是干净的回退。
-   * 详情页时不写：那时的路径是 `/node/{id}`，搜索词要留在它自己的查询串里（见 openNode）。
-   */
-  useEffect(() => {
-    if (open !== null) return
-    history.replaceState({}, "", pageUrl(null, { q: query }))
-  }, [open, query])
-
-  /**
-   * 进详情 / 回列表都走这里，把**当前搜索词**一并写进地址（刷新或分享详情链接时，列表那一屏
-   * 也能原样复原）。
-   */
-  const openNode = (id: number) => {
-    go(id, pageUrl(id, { q: query }))
-  }
-  const openList = () => {
-    go(null, pageUrl(null, { q: query }))
-  }
-
-  // 搜索键盘导航（↑↓ 选、Enter 开）：下标是「命中列表里的第几台」，不变式与清零时机见 cursor 的声明处。
-  const moveCursor = (delta: 1 | -1) => {
-    const count = found.shown.length
-    if (count === 0) return
-    setCursor((c) => (c === null ? (delta === 1 ? 0 : count - 1) : (c + delta + count) % count))
-  }
-  const enterCursor = () => {
-    const node = cursor !== null ? found.shown[cursor] : undefined
-    if (node) openNode(node.id)
-  }
-  // 显示时的当前选中：下标越界（命中数刚变过）就当作没选 —— 读的时候再夹一次，写的时候不用追。
-  const cursorId = cursor !== null && cursor < found.shown.length ? found.shown[cursor].id : null
+  /** 进详情 / 回列表。 */
+  const openNode = (id: number) => go(id)
+  const openList = () => go(null)
 
   // `/node/{id}` is a page people bookmark and share, so the tab needs the node's
   // name. The site name rather than a fixed string, since the hub lets an operator
@@ -446,8 +356,9 @@ export default function App() {
       <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
         {/* ★ 窄屏的横向余量很紧（390 宽上这一行原本要 407px，整页因此能横向拖动）。现在按
             「**站名优先展开、图标自己滑**」分：站名那格 max-w-[55%]（正常名字完整显示，
-            只有长到离谱才轮到 truncate），搜索钉在它右边，剩下几枚图标装进一条能横向滑动的
-            条带里 —— 与下面那行分组标签同一套做法：装不下就滑，不裁字、也不把整页撑宽。 */}
+            只有长到离谱才轮到 truncate），剩下几枚图标装进一条能横向滑动的条带里 ——
+            与下面那行分组标签同一套做法：装不下就滑，不裁字、也不把整页撑宽。
+            ★2026-10-16 搜索整个删掉后，站名与条带之间只剩一段 flex-1 空白。 */}
         <div className="mx-auto flex max-w-[1080px] items-center gap-2 px-4 py-3 sm:gap-3 sm:px-6">
           {/* The site name is the way back to the list, so a node page needs
               no back button of its own. A 32px disc of the site's icon leads
@@ -458,25 +369,10 @@ export default function App() {
             <span className="truncate">{me.site_name || "Monitor"}</span>
           </button>
           <div className="flex-1" />
-          {/* 搜索（名称 / 地区 / 系统）：只长在列表页 —— 它收窄的就是下面那张列表，
-              站在某台机器的详情页里按它没有落点。收起时是一枚方形图标，点开就地长成输入框
-              （窄屏是顶栏下面多一行，见 SearchRow）。 */}
-          {open === null && (
-            <SearchBox
-              value={query}
-              onChange={changeQuery}
-              onActivate={onSearchActivate}
-              onClose={collapseSearch}
-              hits={found.hit}
-              onMove={moveCursor}
-              onEnter={enterCursor}
-            />
-          )}
           {/* ★ 图标条带：装不下就**横向滑动**（与下面那行分组标签同一套做法）。
               py/px 是给 .tap 那圈 ±6px 的命中区留地方 —— 被 overflow 裁掉的话命中区只剩 36
-              （护栏会当场报出来）；横向**不加**负 margin：那会让条带的盒子压到搜索那一格上，
-              把搜索的命中区吃掉一半（实测 44 → 33）。条带里的间距固定 12px（与桌面同）：两枚
-              图标的命中区各向外 6px，正好在缝里相接，不多不少（8px 会重叠、护栏也会报）。
+              （护栏会当场报出来）。条带里的间距固定 12px：两枚图标的命中区各向外 6px，
+              正好在缝里相接，不多不少（8px 会重叠、护栏也会报）。
               滑动条藏起来（见 index.css 的 .header-tools）：它长在 sticky 顶栏里，露出来
               就是一条横杠；「还能滑」的提示由露一半的那枚图标给，与分组标签行一致。 */}
           <div className="header-tools -my-1.5 -mr-1.5 flex min-w-0 items-center gap-3 overflow-x-auto px-1.5 py-1.5">
@@ -507,11 +403,6 @@ export default function App() {
           </Button>
           </div>
         </div>
-        {/* 窄屏点开搜索后在顶栏下面多出来的那一行：摆成 header 的直接子节点，
-            于是它跟着这个 sticky 块一起吸顶（滚动时不会留在列表里被滚走）。 */}
-        {open === null && searchOpen && (
-          <SearchRow value={query} onChange={changeQuery} onClose={closeSearchRow} onMove={moveCursor} onEnter={enterCursor} />
-        )}
       </header>
 
       <main className="mx-auto w-full max-w-[1080px] flex-1 space-y-5 px-4 py-4 sm:px-6">
@@ -541,25 +432,7 @@ export default function App() {
             ))}
           </div>
         ) : (
-          <>
-            {/* 一台都剩不下时说清楚是搜索把它筛没的，并指回去哪儿取消 —— 否则访客只看到
-                一大片空白，会以为站点坏了。 */}
-            {/* 搜索时把命中数播报给读屏（2026-10-15 审出来）：卡片是通过 role=button 暴露的，
-                键盘选中只落在 data-selected 与那圈 outline 上，读屏既听不到命中几台、也不知道
-                当前选中谁。先补最便宜的一半：一条 sr-only 的 live region。 */}
-            {found.active && query.trim() !== "" && (
-              <p className="sr-only" aria-live="polite">命中 {found.shown.length} 台</p>
-            )}
-            {found.active && found.shown.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                当前筛选下没有匹配「{found.query.trim()}」的节点 —— 名称、地区、系统三处都能搜
-                （多个词用空格隔开，要同时命中）；点搜索框里那枚 × 清掉。
-              </p>
-            ) : null}
-            <NodeList nodes={found.shown} total={sorted.length} onOpen={openNode} onWarm={warmDetail}
-              terms={found.terms}
-              cursorId={cursorId} />
-          </>
+          <NodeList nodes={sorted} onOpen={openNode} onWarm={warmDetail} />
         )}
       </main>
 
@@ -625,18 +498,12 @@ function SiteIcon() {
  *
  * 每块 12 张（约 30ms，短于 50ms 的长任务线），块与块之间用 `setTimeout(0)` 让浏览器先画一帧。
  * 少于一块的量（≤24 台）完全不改变行为 —— 护栏用的都是小夹具，不受影响。
+ *
+ * ★（2026-10-16）搜索删掉后不再有「筛选身份」可当重置键：台数变化只由 Math.min 夹一次、
+ *   进度不重置 —— 线上多/少一台不会让列表整段重挂（那正是 2026-10-15 修掉的闪烁）。
  */
-function useProgressive(total: number, identity: string, first = 24, step = 12): number {
+function useProgressive(total: number, first = 24, step = 12): number {
   const [limit, setLimit] = useState(() => Math.min(total, first))
-  // ★重置键是**筛选身份**（搜索词），不是台数（2026-10-15 审出来）：原来只要台数变（线上多/少一台、
-  //   夹具 60→61）就把上限打回 24，列表在屏上整段闪一下（rAF 逐帧实测 [60,24,36,48,60,61]），
-  //   过程中文档高度骤降、滚动位置被浏览器夹回去。渲染期直接比，不放进 effect
-  //   （effect 里同步 setState 会白白多跑一轮渲染）。
-  const [seen, setSeen] = useState(identity)
-  if (seen !== identity) {
-    setSeen(identity)
-    setLimit(Math.min(total, first))
-  }
   useEffect(() => {
     if (limit >= total) return
     const timer = setTimeout(() => setLimit((n) => Math.min(total, n + step)), 0)
@@ -647,35 +514,22 @@ function useProgressive(total: number, identity: string, first = 24, step = 12):
 }
 
 /**
- * 卡片网格：把当前该显示的那批机器摊成「简约」卡片（本主题唯一一档）。
- * 「该显示哪几台」在 App 里算好（搜索那一层，见 `found`），这里只管画。
+ * 卡片网格：把这批机器摊成「简约」卡片（本主题唯一一档），只管画。
+ * （2026-10-16 搜索整个删掉后，这里不再有筛选、描色与键盘光标。）
  */
-function NodeList({ nodes, total, onOpen, onWarm, terms, cursorId }: {
-  /** 搜索过滤后的那批机器（App 的 `found.shown`）。 */
+function NodeList({ nodes, onOpen, onWarm }: {
   nodes: Node[]
-  /** 全量台数（未过滤）：一台都没有时才说「还没有节点」，被搜索筛空的处理在 App 里。 */
-  total: number
   /** 进详情。 */
   onOpen: (id: number) => void
   /** 指针/键盘刚落到某一张卡片上：把详情那块 chunk 先取回来（见 App 的 warmDetail）。 */
   onWarm: () => void
-  /** 搜索命中词：卡片名字里描色（见 Highlight）。没在搜时是空数组 —— 一切照旧。 */
-  terms: string[]
-  /** 键盘选中的那台（↑↓ 选中的下标换算来的 id）：加一圈描边、并随光标滚进视野。 */
-  cursorId: number | null
 }) {
   // 首屏先画一屏的量，剩下的分帧补上（见 useProgressive）。
-  const limit = useProgressive(nodes.length, terms.join(" "))
+  const limit = useProgressive(nodes.length)
   const list = nodes.slice(0, limit)
-  // 键盘选中（↑↓）的那台滚进视野：block: nearest —— 够不着才拉，不打断访客自己滚到的地方。
-  // 分批挂载还没轮到它时（选择挂在第 25 台开外）查询落空，等下一批挂上来光标再动自然会被看见。
-  useEffect(() => {
-    if (cursorId === null) return
-    document.querySelector(`[data-node-card="${cursorId}"]`)?.scrollIntoView({ block: "nearest" })
-  }, [cursorId])
   return (
     <>
-      {total === 0 ? (
+      {nodes.length === 0 ? (
         <p className="py-16 text-center text-sm text-muted-foreground">还没有节点</p>
       ) : (
         // ★ 一行两张宽卡（2026-10-15 照站长给的参考站定的：那边 768 起就是两列、卡片 508×209，
@@ -683,7 +537,7 @@ function NodeList({ nodes, total, onOpen, onWarm, terms, cursorId }: {
         //   原先的 2/3/4 列 + 1280 容器让卡片窄而高（299×266），形态差得远。
         <div className="grid items-start gap-3 md:grid-cols-2">
           {list.map((n) => (
-            <NodeCard key={n.id} node={n} onOpen={() => onOpen(n.id)} onWarm={onWarm} terms={terms} selected={n.id === cursorId} />
+            <NodeCard key={n.id} node={n} onOpen={() => onOpen(n.id)} onWarm={onWarm} />
           ))}
         </div>
       )}

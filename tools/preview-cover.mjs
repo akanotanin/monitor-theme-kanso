@@ -1,10 +1,10 @@
 // 生成主题预览图（preview.png = 面板卡片上那张）——「角色 + 主题名」封面版。
 //
 // 用法：node tools/preview-cover.mjs [输出路径] [形态]
-//   node tools/preview-cover.mjs                       # 默认 → preview.png，纯封面（发版用这张）
-//   node tools/preview-cover.mjs shots/x.png pure-big  # 角色与文字各放大一档
+//   node tools/preview-cover.mjs shots/x.png pure-big  # ★发版就用这张（仓库里的 preview.png = pure-big 出的）
+//   node tools/preview-cover.mjs                       # 默认 pure：纯封面，字号比发版那张小一档
 //   node tools/preview-cover.mjs shots/x.png band      # 下方带一条现网实拍长条
-//   形态：pure（默认） | pure-big | band
+//   形态：pure（默认） | pure-big（发版） | band
 //
 // 为什么这么做（而不是直接 Page.captureScreenshot 拍站点）：
 //   1. 面板卡片上只有约 300px 宽，一张缩到那个尺寸还看得清「这是哪个主题」的图，

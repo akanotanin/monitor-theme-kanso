@@ -1,7 +1,10 @@
 // 预览图三件套一次生成（公开仓库用，中性数据）：
-//   ① preview.png         列表页 1440×810 @2x（亮）
+//   ① preview-light.png   列表页 1440×810 @2x（亮）
 //   ② preview-dark.png    同一机位的深色版（按系统暗色拍，见 shot_preview.mjs 的第 7 参数）
-//   ③ preview-mobile.png  手机 390×844 @3x（单列）
+//   ③ preview-mobile.png  手机档 585×1500 @2x（1170×3000，单列全列：六张卡 + 页脚都装得下）
+// ★手机档口径＝585×1500@2 —— 与线上成品（1.5.0 起）逐像素对得上；390×844@3 只看得见三张半、页脚也进不来。
+// ★preview.png 不在这里：1.6.1 起它是「角色封面」（tools/preview-cover.mjs 出图，随进发布包、也是
+//   README 顶部大图），与本套截图分工不同 —— 这个工具不许覆写它（三件套的亮色那张叫 preview-light.png）。
 // 自起桩服务（tools/preview-nodes.json 的中性节点）→ 逐张调用 shot_preview.mjs → 关服务。
 // 数据来源必须中性：这三张会公开发在 GitHub 上，不许带真实机器名 / 金额（见 shot_preview.mjs 头部）。
 // 用法：cd <repo> && node tools/shot_preview_set.mjs（先 npm run build）
@@ -24,9 +27,9 @@ const run = (args) => new Promise((res, rej) => {
 })
 
 const BASE = `http://127.0.0.1:${PORT}`
-await run([BASE, 'preview.png', '1440', '810', '2'])
+await run([BASE, 'preview-light.png', '1440', '810', '2'])
 await run([BASE, 'preview-dark.png', '1440', '810', '2', 'dark'])
-await run([BASE, 'preview-mobile.png', '390', '844', '3'])
+await run([BASE, 'preview-mobile.png', '585', '1500', '2'])
 
 serve.kill()
-console.log('三张就位：preview.png / preview-dark.png / preview-mobile.png')
+console.log('三张就位：preview-light.png / preview-dark.png / preview-mobile.png')

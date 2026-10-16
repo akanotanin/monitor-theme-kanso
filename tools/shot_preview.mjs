@@ -1,7 +1,8 @@
-// 拍主题的预览图（preview.png）：固定视口 + DPR=2，等数字动画落定再截，拍完回报几何。
+// 拍主题的预览图（README 三件套里的截图，默认输出 preview-light.png）：固定视口 + DPR=2，等数字动画落定再截，拍完回报几何。
 //
 // 用法：node tools/shot_preview.mjs [baseUrl] [outPath] [width] [height] [DPR]
-//   node tools/shot_preview.mjs http://127.0.0.1:28081 preview.png 1440 810 2
+//   node tools/shot_preview.mjs http://127.0.0.1:28081 preview-light.png 1440 810 2
+// ★preview.png 是面板卡片的「角色封面」（tools/preview-cover.mjs 出图、随进发布包），别拿截图盖掉它。
 //
 // 为什么要有它（而不是直接 Page.captureScreenshot）：
 //   1. 数字滚动动画进行中 element.textContent 本身就是 # % & A 之类字符，截进去是乱码图 —
@@ -20,7 +21,7 @@ import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
 const BASE = (process.argv[2] || 'http://127.0.0.1:28081').replace(/\/$/, '')
-const OUT = process.argv[3] || 'preview.png'
+const OUT = process.argv[3] || 'preview-light.png'
 const W = Number(process.argv[4] || 1440)
 const H = Number(process.argv[5] || 810)
 const DPR = Number(process.argv[6] || 2)

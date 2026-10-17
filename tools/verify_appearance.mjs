@@ -5,6 +5,7 @@
 //   · theme-color（手机浏览器那一圈）：App 起来后只剩一份没有 media 的，值 == 页面实际底色；
 //     访客的覆盖与系统相反时也跟**页面**走（不是系统）
 //   · 进度条填色：亮 / 暗两套各断一遍（清新的绿 + 有效对比 2–8:1）
+//   · 暗色：卡片/底、卡缘线/底分得开（2026-10-17 口径；防「卡面调回去」的回退）
 //
 // 用法：node tools/verify_appearance.mjs（先 npm run build，dist/ 得是新的）
 import { spawn } from 'node:child_process'
@@ -65,30 +66,32 @@ await send('Runtime.enable'); await send('Page.enable')
 let pass = 0, fail = 0
 const check = (name, ok, extra = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${extra ? ' — ' + extra : ''}`); if (ok) pass++; else fail++ }
 
-/** 读当前页面的明暗、访客记录、theme-color 与卡片进度条。 */
+/** 读当前页面的明暗、访客记录、theme-color、卡片进度条与卡面/卡缘线的合成有效色。 */
 async function probe() {
-  return JSON.parse(await js(`JSON.stringify({
+  return JSON.parse(await js(`(() => {
+    // token 是 oklch()，正则抠数字会得到垃圾，颜色一律经 canvas 合成（卡片底还常常是透明的，
+    // 先合成到页面底上，才是访客看到的那一层）。
+    const paint = (under, top) => {
+      const c = document.createElement('canvas'); c.width = c.height = 1; const x = c.getContext('2d')
+      if (under) { x.fillStyle = under; x.fillRect(0, 0, 1, 1) }
+      if (top) { x.fillStyle = top; x.fillRect(0, 0, 1, 1) }
+      const d = x.getImageData(0, 0, 1, 1).data
+      return { rgb: 'rgb(' + d[0] + ',' + d[1] + ',' + d[2] + ')', alpha: +(d[3] / 255).toFixed(3) }
+    }
+    const bodyRaw = getComputedStyle(document.body).backgroundColor
+    return JSON.stringify({
     dark: document.documentElement.classList.contains('dark'),
     ls: (() => { const o = {}; try { for (let i = 0; i < localStorage.length; i += 1) { const k = localStorage.key(i); o[k] = localStorage.getItem(k) } } catch {} return o })(),
     // theme-color（手机浏览器那一圈）：App 起来之后应当只剩一份没有 media 的，值等于页面实际底色。
     themeColors: [...document.querySelectorAll('meta[name="theme-color"]')].map((m) => ({ content: m.content, media: m.getAttribute('media') })),
-    // 进度条填色的**有效颜色**：token 是 oklch()，正则抠数字会得到垃圾，颜色一律经 canvas 合成。
-    // 卡片底还常常是透明的，先合成到页面底上，才是访客看到的那一层。
+    // 进度条填色：合成后取「绿 + 有效对比」。
     meter: (() => {
       const card = [...document.querySelectorAll('[data-slot=card]')].find((c) => c.querySelector('div.overflow-hidden.rounded-full'))
       if (!card) return null
       const bar = card.querySelector('div.overflow-hidden.rounded-full')
       const fill = bar.firstElementChild
       if (!fill) return null
-      const paint = (under, top) => {
-        const c = document.createElement('canvas'); c.width = c.height = 1; const x = c.getContext('2d')
-        if (under) { x.fillStyle = under; x.fillRect(0, 0, 1, 1) }
-        if (top) { x.fillStyle = top; x.fillRect(0, 0, 1, 1) }
-        const d = x.getImageData(0, 0, 1, 1).data
-        return { rgb: 'rgb(' + d[0] + ',' + d[1] + ',' + d[2] + ')', alpha: +(d[3] / 255).toFixed(3) }
-      }
-      const body = getComputedStyle(document.body).backgroundColor
-      const cardEff = paint(body, getComputedStyle(card).backgroundColor).rgb
+      const cardEff = paint(bodyRaw, getComputedStyle(card).backgroundColor).rgb
       const text = card.querySelector('h3')
       const fillRaw = getComputedStyle(fill).backgroundColor
       const fillRgb = paint(cardEff, fillRaw).rgb
@@ -104,6 +107,13 @@ async function probe() {
         card: cardEff,
       }
     })(),
+    // 卡面与卡缘线（2026-10-17「暗色下卡片与页面底分得开」那条判据用）：同样取**合成后**的有效色。
+    surface: (() => {
+      const card = document.querySelector('main [data-node-card], [data-slot=card]')
+      if (!card) return null
+      const cardEff = paint(bodyRaw, getComputedStyle(card).backgroundColor).rgb
+      return { card: cardEff, line: paint(cardEff, getComputedStyle(card).borderTopColor).rgb }
+    })(),
     bodyBg: (() => {
       const c = document.createElement('canvas'); c.width = c.height = 1
       const x = c.getContext('2d'); if (!x) return null
@@ -112,7 +122,8 @@ async function probe() {
       const d = x.getImageData(0, 0, 1, 1).data
       return 'rgb(' + d[0] + ', ' + d[1] + ', ' + d[2] + ')'
     })(),
-  })`))
+    })
+  })()`))
 }
 
 async function load({ systemDark = false, visitor = null }) {
@@ -193,6 +204,22 @@ check('暗色：同上（暗底上的有效对比度与亮色不是一回事，�
   s.meter && s.meter.green && contrast(s.meter.fill, s.meter.card) >= 2 && contrast(s.meter.fill, s.meter.card) <= 8 &&
   contrast(s.meter.fill, s.meter.card) < contrast(s.meter.text, s.meter.card),
   JSON.stringify(s.meter) + ` 填色 ${s.meter && contrast(s.meter.fill, s.meter.card)}:1 / 站名 ${s.meter && contrast(s.meter.text, s.meter.card)}:1`)
+
+console.log('\n=== 暗色：卡片与页面底分得开（2026-10-17 口径）===')
+/**
+ * 「暗色下卡片与页面底区分不明显」的反馈后的口径：卡片面 --card 0.21→0.23、描边 13%→15%。
+ * 判据只针对暗色（亮色那套没动）：卡/底、卡缘线/底都要立得住，又都不许过界 ——
+ *   · 卡片/底 合成对比 ≥ 1.14（抬升前 1.10 就是「分不开」的那一档；现在实测 1.16），封顶 1.35
+ *     （再往上卡片开始"浮灰"）；
+ *   · 卡缘线/底 ≥ 1.62（抬升前 1.49；卡面 0.23 配旧 13% 描边只有 1.60 —— 两档必须一起抬，
+ *     现在 1.67），封顶 2.2（线再亮就变成"画框"）。
+ */
+s = await load({ systemDark: true })
+const sf = s.surface
+check('暗色：卡/底 ≥ 1.14 且 ≤ 1.35、卡缘线/底 ≥ 1.62 且 ≤ 2.2',
+  !!(sf && contrast(sf.card, s.bodyBg) >= 1.14 && contrast(sf.card, s.bodyBg) <= 1.35 &&
+    contrast(sf.line, s.bodyBg) >= 1.62 && contrast(sf.line, s.bodyBg) <= 2.2),
+  sf ? `卡/底 ${contrast(sf.card, s.bodyBg)} 线/底 ${contrast(sf.line, s.bodyBg)}（卡 ${sf.card} 线 ${sf.line} 底 ${s.bodyBg}）` : '没找到卡片')
 
 console.log(`\n结果: PASS ${pass} / FAIL ${fail}`)
 ws.close(); chrome.kill(); server.close()

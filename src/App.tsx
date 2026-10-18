@@ -171,6 +171,10 @@ function useTheme() {
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark)
+    // 原生滚动条 / 控件跟着页面明暗。**首帧**那份在 index.html 的内联脚本里（它必须赶在
+    // 入口包之前跑，见 check-config）；这里是运行时的同一件事 —— 访客点过顶栏那枚图标之后，
+    // 两边必须仍然是同一个口径。
+    document.documentElement.style.colorScheme = dark ? "dark" : "light"
     /**
      * 手机浏览器那一圈（地址栏 / 状态栏）的配色（`theme-color`）跟着**页面实际用的**明暗走。
      *
@@ -357,9 +361,14 @@ export default function App() {
         {/* ★ 窄屏的横向余量很紧（390 宽上这一行原本要 407px，整页因此能横向拖动）。现在按
             「**站名优先展开、图标自己滑**」分：站名那格 max-w-[55%]（正常名字完整显示，
             只有长到离谱才轮到 truncate），剩下几枚图标装进一条能横向滑动的条带里 ——
-            与下面那行分组标签同一套做法：装不下就滑，不裁字、也不把整页撑宽。
+            装不下就滑，不裁字、也不把整页撑宽（「装不下就滑」这套做法最初用在分组标签行上，
+            那一行随分组功能在 1.0.0 一起删了，现在只剩这条图标带）。
             ★2026-10-16 搜索整个删掉后，站名与条带之间只剩一段 flex-1 空白。 */}
         <div className="mx-auto flex max-w-[1080px] items-center gap-2 px-4 py-3 sm:gap-3 sm:px-6">
+          {/* 读屏与大纲的 h1：视觉上站点名就是那枚按钮，而 h1 包进 <button> 不合法，
+              所以这里放一枚视觉隐藏的同名标题，页面标题层级从 h1 起（2026-10-18 审出）。
+              `sr-only` 是绝对定位，不参与这一行的布局。 */}
+          <h1 className="sr-only">{me.site_name || "Monitor"}</h1>
           {/* The site name is the way back to the list, so a node page needs
               no back button of its own. A 32px disc of the site's icon leads
               it — `/favicon.svg` is the one address that answers with the
@@ -369,12 +378,12 @@ export default function App() {
             <span className="truncate">{me.site_name || "Monitor"}</span>
           </button>
           <div className="flex-1" />
-          {/* ★ 图标条带：装不下就**横向滑动**（与下面那行分组标签同一套做法）。
+          {/* ★ 图标条带：装不下就**横向滑动**（这条做法与 1.0.0 起已删的分组标签行同源）。
               py/px 是给 .tap 那圈 ±6px 的命中区留地方 —— 被 overflow 裁掉的话命中区只剩 36
               （护栏会当场报出来）。条带里的间距固定 12px：两枚图标的命中区各向外 6px，
               正好在缝里相接，不多不少（8px 会重叠、护栏也会报）。
               滑动条藏起来（见 index.css 的 .header-tools）：它长在 sticky 顶栏里，露出来
-              就是一条横杠；「还能滑」的提示由露一半的那枚图标给，与分组标签行一致。 */}
+              就是一条横杠；「还能滑」的提示由露一半的那枚图标给。 */}
           <div className="header-tools -my-1.5 -mr-1.5 flex min-w-0 items-center gap-3 overflow-x-auto px-1.5 py-1.5">
           {/* The panel is a separate app built into the hub, not part of this
               theme, so this is a navigation rather than a route. Icon only, with
@@ -406,7 +415,7 @@ export default function App() {
       </header>
 
       <main className="mx-auto w-full max-w-[1080px] flex-1 space-y-5 px-4 py-4 sm:px-6">
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
         {open !== null ? (
           !nodes ? (
@@ -451,13 +460,10 @@ export default function App() {
       <footer className="mx-auto mt-2 w-full max-w-[1080px] border-t px-4 pb-5 pt-4 sm:mt-0 sm:border-t-0 sm:px-6 sm:pb-5 sm:pt-1">
         <p className="theme-credit text-center sm:pr-3 sm:text-right">
           Theme:{" "}
-          {REPO_URL ? (
-            <a href={REPO_URL} target="_blank" rel="noreferrer">
-              Kanso
-            </a>
-          ) : (
-            "Kanso"
-          )}
+          {/* ★REPO_URL 是常量（非空），原来那个三元里的 else 分支永远走不到 —— 2026-10-18 删。 */}
+          <a href={REPO_URL} target="_blank" rel="noreferrer">
+            Kanso
+          </a>
         </p>
       </footer>
     </div>

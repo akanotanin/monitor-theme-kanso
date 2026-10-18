@@ -59,6 +59,11 @@ eq(remarkChips({ public_remark: "公开那条", remark: "私有那条" }),
   [{ text: "私有那条", own: true }, { text: "公开那条", own: false }], "两枚各带自己的来源标记")
 eq(remarkChips({ public_remark: "hub 一条" }), [{ text: "hub 一条", own: false }], "公开备注那串按逗号拆")
 
+// ★2026-10-18：类型漂移（数字 / 对象）一律按「没写」处理 —— 这是渲染路径，抛出去就是整页出错。
+eq(publicRemark({ public_remark: 42 as unknown as string }), "", "数字型的公开备注＝没写（不抛错）")
+eq(ownTags({ remark: 8 as unknown as string }), [], "数字型的私有备注＝没写（不抛错）")
+eq(remarkChips({ public_remark: 7, remark: 8 } as unknown as { public_remark: string; remark: string }), [], "两个字段都是数字＝一枚都没有")
+
 // ── splitTags 本身 ────────────────────────────────────────────────────
 eq(splitTags("a, b ，c"), ["a", "b", "c"], "半角 / 全角逗号都拆，逐枚削空白")
 eq(splitTags(",,，"), [], "全是分隔符＝空")

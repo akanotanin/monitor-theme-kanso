@@ -4,7 +4,7 @@
 //
 // Nothing imports it, so the bundle never includes it.
 import {
-  axisBytes, axisTop, bytes, CYCLE_SHORT, CYCLES, cpuName, daysUntil, despike, innerTicks, osName, pair, percent, quarters, rate, timeTicks, uptime, zoomSpan,
+  axisBytes, axisTop, bytes, CYCLE_SHORT, cpuName, daysUntil, despike, innerTicks, osName, pair, percent, quarters, rate, timeTicks, uptime, zoomSpan,
 } from "./format.ts"
 
 let failed = 0
@@ -155,12 +155,13 @@ eq(uptime(2 * 86400 + 5 * 3600), "2 天 5 小时", "超过一天不再写分钟"
 eq(osName("Debian GNU/Linux 12 (bookworm)"), "Debian 12", "发行版名去掉代号")
 eq(cpuName("Intel(R) Xeon(R) CPU E5-2680 8-Core Processor"), "Intel Xeon E5-2680", "CPU 名去掉商标和核数")
 
-// CYCLE_SHORT：卡片底注那一档的短写法（整页详情的 CYCLES 仍写「月付」）。两组键必须一致 ——
+// CYCLE_SHORT：卡片底注那一档的短写法。★2026-10-18：原来那份长写法（CYCLES，「月付」那种）
+// 没有任何调用点、已删 —— 于是一份表就是全部，这里直接钉**七个键**：
 // 少一个键就会在卡片上印出「价格 ¥47.00」（周期整截丢掉），多一个键则是没人会读到的死条目。
 eq(CYCLE_SHORT.monthly, "月", "月付短写法")
 eq(CYCLE_SHORT.yearly, "年", "年付短写法")
 eq(CYCLE_SHORT.once, "一次性", "一次性不缩")
-eq(Object.keys(CYCLE_SHORT).sort(), Object.keys(CYCLES).sort(), "短写法与 CYCLES 是同一组键")
+eq(Object.keys(CYCLE_SHORT).sort(), ["biennial", "monthly", "once", "quarterly", "semiannual", "triennial", "yearly"], "七个周期键一个不少")
 
 // innerTicks（滚轮纵缩那一档的刻度）：**一枚都不许落在 [lo, hi] 外面**。
 // 2026-10-15 站长拿截图报「延迟跑到外面」：循环上界原来写 `hi + step / 2`，会在量程顶端

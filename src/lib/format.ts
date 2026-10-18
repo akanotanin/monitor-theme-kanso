@@ -143,20 +143,11 @@ export function money(amount: number, currency: string): string {
   return `${currencySymbol(currency)}${moneyAmount(amount, currency)}`
 }
 
-export const CYCLES: Record<string, string> = {
-  monthly: "月付",
-  quarterly: "季付",
-  semiannual: "半年付",
-  yearly: "年付",
-  biennial: "两年付",
-  triennial: "三年付",
-  once: "一次性",
-}
-
 /**
- * 同一组周期的**短写法**，给卡片底注那种一行小字用：`价格 ¥47.00/年`。
- * 与 CYCLES 是同一组键（两处一起改，format.test.ts 钉住了这一点）；键认不出来时不写周期，
- * 只留金额 —— 老 hub 或手填的值不该把「/undefined」印到卡片上。
+ * 周期的短写法，给卡片底注那种一行小字用：`价格 ¥47.00/年`。
+ * ★这一份**就是全部**（2026-10-18 起）：详情页不再写价格，原来那份长写法（「月付」那种）
+ * 已经没有调用点、已删 —— 别再加第二份；format.test.ts 钉着这 7 个键一个不少。
+ * 键认不出来时不写周期，只留金额 —— 老 hub 或手填的值不该把「/undefined」印到卡片上。
  */
 export const CYCLE_SHORT: Record<string, string> = {
   monthly: "月",

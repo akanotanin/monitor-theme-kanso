@@ -12,7 +12,8 @@ for t in verify_appearance verify_icons verify_touch_targets verify_footer_credi
          verify_detail_charts verify_title verify_farm_entry \
          verify_card_form \
          verify_latency_min_span verify_detail_remarks verify_detail_preload \
-         verify_offline_last verify_offline_time verify_visibility verify_hub141; do
+         verify_offline_last verify_offline_time verify_visibility verify_hub141 \
+         verify_sparse_payload; do
   line=$(node "tools/$t.mjs" 2>&1 | grep -E "[0-9]+ PASS / [0-9]+ FAIL|ALL PASS|[0-9]+ 条通过|[0-9]+ 个视角通过|PASS [0-9]+ / FAIL [0-9]+|全部通过|FAIL [0-9]+ 条" | tail -1)
   printf "%-26s %s\n" "$t" "${line:-（没抓到结果行，得单独看）}" | tee -a "$OUT"
   sleep 2

@@ -20,11 +20,22 @@ console.log('theme.json 没有声明任何设置项（不提供主题设置）')
 //
 // ★ 站点图标那条缓存 1.25.0 起没了：图标改由 hub 1.4.0 的面板管，
 //   主题侧只留 `public/favicon.svg` + `public/favicon.ico` + `public/apple-touch-icon.png` 三份兜底文件。
+// 两把缓存 key，都必须逐字一致：
+//   · 站名 `kanso:site_name`：App 一处、早跑脚本一处、index.html 的内联脚本一处；
+//   · 明暗 `theme`（2026-10-18 加）：App 的 useTheme 读 / 写 / 删三处 + index.html 的**首帧**
+//     内联脚本一处 —— 暗色访客在入口包执行之前就靠它把 .dark 挂上去（不挂就闪一屏亮色）。
+// 不一致的症状都很阴：缓存有人写、没人读（或反过来），页面照常、谁也不报错 —— 只是刷新时
+// 先闪一次占位值 / 先闪一屏亮色。这里一次比清，顺带保住那两段内联脚本还在、明暗那段还赶在
+// 入口包前面。
 const CACHES = [
   { what: '站名', key: 'kanso:site_name', places: [
     ['src/App.tsx', /TITLE_CACHE_KEY\s*=\s*"([^"]+)"/g],
     ['public/title-probe.js', /var KEY\s*=\s*"([^"]+)"/g],
-    ['index.html', /localStorage\.getItem\("([^"]+)"\)/g],
+    ['index.html', /name = localStorage\.getItem\("([^"]+)"\)/g],
+  ] },
+  { what: '明暗', key: 'theme', places: [
+    ['src/App.tsx', /localStorage\.(?:getItem|setItem|removeItem)\("(theme)"\)/g],
+    ['index.html', /saved = localStorage\.getItem\("([^"]+)"\)/g],
   ] },
 ]
 const bad = []
@@ -44,6 +55,18 @@ const html = readFileSync('index.html', 'utf8')
   if (!probeTag) bad.push(`index.html 里没有引入 /title-probe.js（标签页的占位值就没法早点换掉）`)
   else if (!/\basync\b/.test(probeTag[0])) bad.push(`/title-probe.js 的引入没有 async：普通脚本/defer 会拖住入口与首绘（见 index.html 注释里的实测数）`)
 }
+// ★ 2026-10-18：首帧明暗那一段（内联）必须还在、并且赶在入口模块之前 —— 它是暗色访客
+//   第一帧就是暗色的唯一保证。删掉它能过掉所有静态检查（页面照样跑），只是慢网下先闪一屏
+//   亮色：慢速 3G 实测 4.5 秒。锚点用那句 classList.toggle("dark", …)。
+{
+  const toggleAt = html.indexOf('document.documentElement.classList.toggle("dark"')
+  const moduleAt = html.indexOf('<script type="module"')
+  if (toggleAt < 0) bad.push(`index.html 里没有首帧明暗的内联脚本（暗色访客会先闪一屏亮色）`)
+  else {
+    if (moduleAt >= 0 && toggleAt > moduleAt) bad.push(`首帧明暗那段内联脚本在入口模块之后：它必须赶在首帧之前跑（挪回 <head> 里）`)
+    if (!html.includes("document.documentElement.style.colorScheme")) bad.push(`首帧明暗那段没有设 colorScheme（暗色下原生滚动条与表单控件仍是亮色）`)
+  }
+}
 // 站点图标的两条静态引用：hub 1.4.0 认的就是这两个路径，写成别的名字等于把兜底丢了。
 for (const icon of ['/favicon.svg', '/apple-touch-icon.png']) {
   if (!html.includes(`href="${icon}"`)) bad.push(`index.html 里没有引用 ${icon}（站点图标的兜底就断了）`)
@@ -53,7 +76,7 @@ for (const file of ['public/favicon.svg', 'public/favicon.ico', 'public/apple-to
   if (!existsSync(file)) bad.push(`缺少 ${file}`)
 }
 if (bad.length) throw new Error(`缓存键或早跑脚本对不上：\n  ${bad.join('\n  ')}`)
-console.log(`缓存键一致：${CACHES.map((c) => `${c.what} ${c.key}（${c.places.length} 处）`).join('、')}；早跑脚本在 index.html 里；站点图标两条静态引用与三份兜底文件都在`)
+console.log(`缓存键一致：${CACHES.map((c) => `${c.what} ${c.key}（${c.places.length} 处）`).join('、')}；早跑脚本在 index.html 里；首帧明暗脚本在入口模块之前；站点图标两条静态引用与三份兜底文件都在`)
 
 // theme-color 的兜底色散在两处、必须逐字一致：index.html 那两份**静态**兜底（按系统明暗挑，
 // 首屏在 JS 起来之前就生效）与 src/App.tsx 里那一对运行时兜底（浏览器不认 oklch 时的退路）。

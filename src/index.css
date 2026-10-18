@@ -25,6 +25,9 @@
 }
 
 :root {
+  /* 原生控件 / 滚动条 / UA 默认底色的明暗口径。**首帧**那份由 index.html 的内联脚本写
+     style.colorScheme、运行时的同一件事在 App 的 useTheme 里；这里给 CSS 侧一份兜底。 */
+  color-scheme: light;
   --radius: 0.625rem;
   /* 页面底色：2026-10-15 起整套中性色换成**暖石（stone）系** —— 参考站的「小清新」大半来自
      这一档温灰：冷灰（纯中性）在同样亮度下显得「工业」，暖灰才显得轻、显得软。
@@ -80,6 +83,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   /* ── 暗色的文字与底色：对着上游实测过的那一套调过 ─────────────────────────────
      站长 2026-10-06 反馈「全暗模式下字的颜色有些刺眼」。把原站 :root 里那几档取出来算成
      OKLCH，问题就很清楚 —— 它不是"亮一点/暗一点"，而是**对比度差了一档，而且它是暖的**：
@@ -195,9 +199,9 @@
 
 /* 页脚署名（右下角那行）：比正文的弱化色再淡一档，只作署名，不跟页面里的读数抢注意力；
    「Kanso」那截是本主题的源码仓库链接（地址见 App.tsx 的 REPO_URL），悬停才出下划线。 */
-/* 顶栏那条图标带（.header-tools）：装不下时横向滑动，与分组标签同一套做法。
+/* 顶栏那条图标带（.header-tools）：装不下时横向滑动（这套做法与 1.0.0 起已删的分组标签行同源）。
    滑动条藏起来 —— 它长在 sticky 顶栏里、又只在窄窗口才出现，露出来就是一条横杠；
-   「还能滑」的提示由露一半的那枚图标给（与分组标签行一致）。 */
+   「还能滑」的提示由露一半的那枚图标给。 */
 .header-tools { scrollbar-width: none; }
 .header-tools::-webkit-scrollbar { display: none; }
 
@@ -205,7 +209,9 @@
   color: var(--muted-foreground);
   font-size: 12px;
   line-height: 1.6;
-  opacity: 0.62;
+  /* ★不要再叠 opacity（2026-10-18 审出）：12px 文字叠 0.62 之后，亮色下有效对比只剩 2.34:1、
+     暗色 4.02:1 —— 都过不了小字的 4.5:1。`--muted-foreground` 本身就是「比正文弱一档」的那支灰
+     （亮 4.6:1 / 暗 8.9:1），署名要弱就弱在它，别再压一层透明度。 */
 }
 .theme-credit a { color: inherit; text-decoration: none; }
 .theme-credit a:hover { text-decoration: underline; }

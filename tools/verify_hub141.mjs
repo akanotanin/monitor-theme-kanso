@@ -1,4 +1,4 @@
-// hub 1.4.1 的主题侧适配验收（release note「第三方主题请适配」里与本站有关的三条）：
+// hub 1.4.1 的主题侧适配验收 + 两条 2026-10-18 审出的韧性用例（D / E）：
 //
 //   A. **浏览器禁用站点数据**（`localStorage` 访问抛 SecurityError）时页面必须照常渲染 ——
 //      官方两个主题在 1.4.1 随附版里修的「整页空白」就是这个。夹具在页面任何脚本之前
@@ -6,7 +6,11 @@
 //   B. **匿名 `/api/ws` 握手回 503**（满 1000 条时 hub 的形态）：主题必须有轮询 `/api/nodes`
 //      的兜底、并隔一段时间再试 WS —— 只做断线重连、没有轮询的主题会停在旧数据上。
 //   C. **`/api/nodes/{id}/metrics` 每行新增 `swap_used`/`tcp`/`udp`/`procs`**：行里多出这几个
-//      字段不许让详情页出错（判空由用到的主题负责；本站现在不用它们，这里锁的是「不认识也不崩」）。
+//      字段不许让详情页出错（判空由用到的主题负责；详情页现在用 tcp/udp/procs，这里锁的是「不认识也不崩」）。
+//   D. **一帧非节点 JSON（心跳）不许把列表清空**：原来 receive() 对非数组一律 setNodes([])，
+//      一帧 `{"type":"pong"}` 就能把整页变成「还没有节点」（2026-10-18 修）。
+//   E. **握手成功但永不推帧的静默连接**：只看 onclose/onerror 会一直停在第一帧上；看门狗
+//      15 秒无帧主动关闭 → 轮询 + 重连（2026-10-18 加）。
 //
 // 反向自测底账：拿修复前的构建跑，A 组必须红（实测 2 FAIL：卡片 0 张 + 控制台 SecurityError）。
 //
@@ -66,7 +70,8 @@ const server = createServer((req, res) => {
   res.end(readFileSync(file))
 })
 const sendHtml = (res) => { res.writeHead(200, { 'Content-Type': TYPES['.html'] }); res.end(readFileSync('dist/index.html')) }
-// WS：'refuse' 回 503；'accept' 做最小 101 握手（此后不推任何帧，轮询兜底照常工作）。
+// WS：'refuse' 回 503；'accept' 做最小 101 握手（此后**永不推帧**，用来验看门狗 —— E 组）；
+//     'frames' 握手后 0.6 秒推一帧心跳 `{"type":"pong"}`（非节点 JSON，用来验 D 组）。
 server.on('upgrade', (req, socket) => {
   stats.upgrades += 1
   if (wsMode === 'refuse') {
@@ -77,6 +82,13 @@ server.on('upgrade', (req, socket) => {
   const key = req.headers['sec-websocket-key'] || ''
   const accept = createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64')
   socket.write(`HTTP/1.1 101 Switching Protocols\r\nupgrade: websocket\r\nconnection: Upgrade\r\nsec-websocket-accept: ${accept}\r\n\r\n`)
+  if (wsMode === 'frames') {
+    // 服务端 → 客户端的一帧文本：不掩码，长度 < 126 时第二字节就是长度。
+    const payload = Buffer.from('{"type":"pong"}')
+    setTimeout(() => {
+      try { socket.write(Buffer.concat([Buffer.from([0x81, payload.length]), payload])) } catch { /* 连接没了就算了 */ }
+    }, 600)
+  }
 })
 await new Promise((r) => server.listen(PORT, '127.0.0.1', r))
 
@@ -185,6 +197,36 @@ check('★ 详情页画出了图表（[data-chart] ≥ 1）', charts >= 1, `图�
 check('★ 页面没有因为多出的字段报错', !errors.some((e) => /swap_used|procs/.test(e)), errors.join(' | ').slice(0, 200))
 check('C 组控制台无异常', errors.length === errBase, errors.slice(errBase).join(' | ').slice(0, 200))
 await shot('detail.png')
+
+/* ---------------------------------------------------------------- D. 非节点帧：不许清空列表 */
+console.log('\n=== D、WS 推一帧心跳（非节点 JSON）：列表一张都不许少 ===')
+wsMode = 'frames'
+await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` })
+await waitFor(`document.querySelectorAll('[data-node-card]').length >= 3`, 12000)
+await sleep(300)
+const beforeD = await cards()
+await sleep(2800) // 心跳在握手后 ~0.6s 到达，等它过去再数
+const afterD = await cards()
+check('★ 收到心跳帧之后卡片一张不少', beforeD >= 3 && afterD === beforeD, `${beforeD} → ${afterD}`)
+check('★ 页面没有变成「还没有节点」', !(await js(`document.body.innerText.includes('还没有节点')`)), '')
+check('D 组控制台无异常', errors.length === errBase, errors.slice(errBase).join(' | ').slice(0, 200))
+errBase = errors.length
+
+/* ---------------------------------------------------------------- E. 静默 WS：看门狗接管 */
+console.log('\n=== E、WS 握手成功但永不推帧：15 秒无帧必须关掉它、转轮询 + 重连 ===')
+wsMode = 'accept'
+const beforeE = { nodes: stats.nodes, upgrades: stats.upgrades }
+await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` })
+await waitFor(`document.querySelectorAll('[data-node-card]').length >= 3`, 12000)
+const firstPoll = stats.nodes - beforeE.nodes
+await sleep(30000) // 看门狗 15s 关连接 → onclose 挂轮询（5s 一轮）+ 5s 后重握手
+const dNodesE = stats.nodes - beforeE.nodes - firstPoll
+const dUpE = stats.upgrades - beforeE.upgrades
+check('★ 静默连接被看门狗关掉、轮询接管（窗口内又拉了 ≥2 次 /api/nodes）', dNodesE >= 2, `另外 ${dNodesE} 次（首屏 ${firstPoll} 次）`)
+check('★ 关掉之后还会重握手（≥2 次，含首屏那次）', dUpE >= 2, `窗口内 ${dUpE} 次`)
+check('★ 数据照常显示（卡片 ≥ 3 张）', (await cards()) >= 3, `卡片 ${await cards()} 张`)
+check('E 组控制台无异常', errors.length === errBase, errors.slice(errBase).join(' | ').slice(0, 200))
+errBase = errors.length
 
 console.log(`\n${pass} PASS / ${fail} FAIL`)
 chrome.kill()

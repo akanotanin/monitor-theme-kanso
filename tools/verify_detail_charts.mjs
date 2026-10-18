@@ -614,7 +614,6 @@ if (!REAL && !UPSTREAM) {
       const cx = Math.round(base0.plot.x + base0.plot.w / 2)
       const cy = Math.round(base0.plot.y + base0.plot.h / 2)
       const span0 = spanOf(base0.ticks)
-      const baseTop = Math.max(...base0.ticks.map((t) => t.v))
       const anchor0 = valAtY(base0.ticks, cy)
       // 抓图小工具：`Page.captureScreenshot` 的 clip 吃的是**页面坐标**（护栏自带的 shot 也得
       // `+scrollY`）—— 按视口坐标传就会拍到页面上别处去（第一版这组断言就是这么假红的：

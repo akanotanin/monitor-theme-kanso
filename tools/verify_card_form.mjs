@@ -23,7 +23,7 @@ import { tmpdir } from 'node:os'
 const PORT = Number(process.env.CARDFORM_PORT || 5271)
 const CDP_PORT = PORT + 4000
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.webp': 'image/webp', '.woff2': 'font/woff2' }
-const GB = 1024 ** 3, MB = 1024 ** 2
+const GB = 1024 ** 3
 
 const metrics = (o) => ({
   uptime: 318521, cpu: 3.2, load: [0.08, 0.03, 0.01],

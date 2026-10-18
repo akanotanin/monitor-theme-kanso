@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react"
 
 import { TimeChart } from "@/components/Chart"
 import { PingTooltip } from "@/components/ChartTooltip"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Country, deployed, offlineSeconds } from "@/components/NodeCard"
 import { api, type Node } from "@/lib/api"
@@ -117,6 +118,8 @@ function Tab({ active, onClick, children }: { active: boolean; onClick: () => vo
   return (
     <button
       onClick={onClick}
+      // 选中态原来只有视觉（白胶囊）：读屏听不出哪一档／哪个页签是当前选中的（2026-10-18 审出）。
+      aria-pressed={active}
       className={`tap tap-y-6 rounded-full px-2.5 py-1 text-xs transition-colors ${
         // 选中态＝**白胶囊 + 轻阴影 + 加粗深字**（参考站的页签就是这样），不靠填深色或描边 ——
         // 深色实心块在暖白底上是一块黑补丁，是旧身份里最重的那个东西（2026-10-15 换掉）。
@@ -159,12 +162,24 @@ function onlineFor(node: Node) {
   return down >= 60 ? `离线 ${uptime(down)}` : "离线"
 }
 
+/**
+ * CPU 那格：`型号 × 核数`。型号或核数缺一个时只写有的那截，两个都缺就整格隐身
+ * —— 旧版在这种形状下会印出「AMD EPYC × undefined」（2026-10-18 审出）。
+ */
+function cpuLine(node: Node): string {
+  const cores = node.cpu_cores || 0
+  const name = cpuName(node.cpu_name || "")
+  if (name && cores > 0) return `${name} × ${cores}`
+  return name || (cores > 0 ? `${cores} 核` : "")
+}
+
 function Fact({ label, value }: { label: string; value?: string | number | null }) {
   if (value === null || value === undefined || value === "") return null
   return (
     <div className="min-w-0">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="truncate text-sm">{value}</dd>
+      {/* title：值都被 `truncate` 截断了（手机上 CPU 型号 / 内核名最先被截），悬停至少要能看到全文。 */}
+      <dd className="truncate text-sm" title={typeof value === "string" ? value : undefined}>{value}</dd>
     </div>
   )
 }
@@ -210,6 +225,10 @@ export function NodeDetail({ node, historyDays }: {
   const [failed, setFailed] = useState("")
     // Where the chart begins on screen, so its height can occupy the remainder.
   const [chartTop, setChartTop] = useState(0)
+  // ★「重试」（2026-10-18）：失败后点一下就是一次真重发 —— 计数进 effect 依赖。换页签也能
+  //   重发，但那是碰巧；而 503 是 hub 并发上限的**预期**失败（见下面 fetch 的注释），得有一枚
+  //   明说的按钮。
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let active = true
@@ -240,9 +259,14 @@ export function NodeDetail({ node, historyDays }: {
         if (active) { setFailed(e.message || "网络错误"); setData({ metrics: [], ping: [], probes: {} }) }
       })
     return () => { active = false }
-  }, [node.id, hours, tab])
+  }, [node.id, hours, tab, attempt])
 
   const m = node.metrics
+  // ★2026-10-18：容量一律**实时读数优先**。顶层 mem_total / disk_total 缺失或滞后时，原来
+  //   标题写「内存 · 0 B」、Y 轴只剩 0~1 B，把 600MB 的线整条裁到框外 —— 而 metrics 里同一份
+  //   值就在那儿（卡片侧的口径本来就是读 metrics 的）。
+  const memTotal = m?.mem_total ?? node.mem_total ?? 0
+  const diskTotal = m?.disk_total ?? node.disk_total ?? 0
   // One series per probe that reported, labelled from the names the samples
   // arrived with. Memoised, as are the two below: the node prop changes every few
   // seconds as live metrics arrive, and rebuilding the chart's data array on those
@@ -379,7 +403,7 @@ export function NodeDetail({ node, historyDays }: {
         <Fact label="系统" value={[osName(node.os), node.kernel].filter(Boolean).join(" · ")} />
         <Fact
           label="架构"
-          value={[node.arch, node.virt !== "none" ? node.virt : "", m ? `${m.procs} 进程` : ""]
+          value={[node.arch, node.virt !== "none" ? node.virt : "", m && m.procs !== null ? `${m.procs} 进程` : ""]
             .filter(Boolean)
             .join(" · ")}
         />
@@ -387,13 +411,12 @@ export function NodeDetail({ node, historyDays }: {
             ★2026-10-15 站长要求合成**一格**、写法照「内存 / 硬盘」那格：标签 `TCP / UDP 连接`、
             值 `17 / 3`。离线机器 `metrics` 是 null，这一格随 Fact 的既有口径一起隐身
             ——「没有这个值」本来就不该占格子。 */}
-        <Fact label="TCP / UDP 连接" value={m ? `${m.tcp} / ${m.udp}` : null} />
-        <Fact
-          label="CPU"
-          value={node.cpu_name ? `${cpuName(node.cpu_name)} × ${node.cpu_cores}` : `${node.cpu_cores} 核`}
-        />
-        <Fact label="内存 / 硬盘" value={`${bytes(node.mem_total)} / ${bytes(node.disk_total)}`} />
-        <Fact label="今日流量" value={`↓ ${bytes(node.day_rx)} · ↑ ${bytes(node.day_tx)}`} />
+        {/* 连接数只在这一帧真的带着两个数时出现（老 hub / 形状漂移都是 null）。 */}
+        <Fact label="TCP / UDP 连接" value={m && m.tcp !== null && m.udp !== null ? `${m.tcp} / ${m.udp}` : null} />
+        <Fact label="CPU" value={cpuLine(node)} />
+        {/* 两个容量都是 0（从未接入、或顶层缺失又没读数）= 整格隐身，不摆一格「0 B / 0 B」。 */}
+        <Fact label="内存 / 硬盘" value={memTotal > 0 || diskTotal > 0 ? `${bytes(memTotal)} / ${bytes(diskTotal)}` : null} />
+        <Fact label="今日流量" value={node.day_rx || node.day_tx || m ? `↓ ${bytes(node.day_rx)} · ↑ ${bytes(node.day_tx)}` : null} />
         {/* 最后一格是「在线时间」：取代原先标题行上那枚状态徽章。它顶掉的是「续费」
             那一格——公开页的访客关心这台机器还活着多久，价格与到期在后台看。 */}
         <Fact label="在线时间" value={onlineFor(node)} />
@@ -443,7 +466,12 @@ export function NodeDetail({ node, historyDays }: {
           <Skeleton className="h-40 w-full" />
         </div>
       ) : failed ? (
-        <EmptyPanel tone="error">读取历史数据失败：{failed}</EmptyPanel>
+        <EmptyPanel tone="error">
+          读取历史数据失败：{failed}
+          <span className="mt-3 block">
+            <Button variant="outline" size="sm" onClick={() => setAttempt((n) => n + 1)}>重试</Button>
+          </span>
+        </EmptyPanel>
       ) : tab === "latency" ? (
         pingSeries.length === 0 ? (
           <EmptyPanel>这段时间没有延迟数据</EmptyPanel>
@@ -520,6 +548,7 @@ export function NodeDetail({ node, historyDays }: {
                 return (
                   <button
                     key={s.id}
+                    aria-pressed={shown}
                     onClick={() =>
                       setHiddenProbes((h) => (shown ? [...h, s.id] : h.filter((id) => id !== s.id)))
                     }
@@ -614,12 +643,12 @@ export function NodeDetail({ node, historyDays }: {
               own maximum, which is what an area chart does by default, puts
               127 MB of a 457 MB box at the top of the panel. The size is in the
               title because the axis top is claiming it. */}
-          <Panel title={`内存 · ${bytes(node.mem_total)}`}>
+          <Panel title={`内存 · ${bytes(memTotal)}`}>
             <TimeChart
               rows={metricRows}
               series={[{ key: "mem_used", name: "内存", color: "var(--chart-4)", area: true }]}
               hours={hours}
-              top={node.mem_total}
+              top={memTotal}
               yFormat={axisBytes}
               format={(v) => bytes(v)}
               label="内存使用量走势"
@@ -629,12 +658,12 @@ export function NodeDetail({ node, historyDays }: {
           {/* The disk it is filling, for the same reason as memory: a node
               using 2.7% of its disk draws along the top of the panel when the
               axis tracks the window's own maximum. */}
-          <Panel title={`硬盘 · ${bytes(node.disk_total)}`}>
+          <Panel title={`硬盘 · ${bytes(diskTotal)}`}>
             <TimeChart
               rows={metricRows}
               series={[{ key: "disk_used", name: "硬盘", color: "var(--chart-3)", area: true }]}
               hours={hours}
-              top={node.disk_total}
+              top={diskTotal}
               yFormat={axisBytes}
               format={(v) => bytes(v)}
               label="硬盘使用量走势"

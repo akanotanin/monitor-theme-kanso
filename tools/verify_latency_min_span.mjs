@@ -187,16 +187,6 @@ const LAT = `(() => {
   })
 })()`
 
-/** 卡片走势线读数：按线路名取 polyline 的纵向占高（viewBox 单位，可画区 16）。 */
-const CARD_LINES = `(() => {
-  const rows = [...document.querySelectorAll('[data-latency] [data-probe-name]')].map((el) => {
-    const pl = el.parentElement.querySelector('svg polyline')
-    const ys = pl ? (pl.getAttribute('points') || '').trim().split(' ').map((p) => Number(p.split(',')[1])).filter((n) => Number.isFinite(n)) : []
-    return { name: el.textContent, extent: ys.length ? Math.round((Math.max(...ys) - Math.min(...ys)) * 100) / 100 : null }
-  })
-  return JSON.stringify(rows)
-})()`
-
 async function shot(name, selector) {
   // 同 verify_detail_charts：★captureBeyondViewport 在无头 + --disable-gpu 下不可靠，
   // 先把目标滚进视口再拍（超出视口的部分会拍到空白）。

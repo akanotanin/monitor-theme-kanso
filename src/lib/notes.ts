@@ -19,7 +19,10 @@
 export function publicRemark(node: { public_remark?: string | null }): string {
   // 再削一次空白：旧数据、手工改库都可能带空白，而「只有空白」应当与「没写」等价，
   // 否则会渲染出一个空的备注位（零占位的结论就假了）。
-  return (node.public_remark ?? "").trim()
+  // ★类型漂移（数字 / 对象）也按「没写」处理（2026-10-18 审出）：原来直接 `.trim()`，
+  //   hub 的形状一坏就在渲染期抛 TypeError。safeNodes 也会归一，但这里是纯函数、能脱开
+  //   React 单测 —— 兜住更便宜，渲染路径永远拿到字符串。
+  return typeof node.public_remark === "string" ? node.public_remark.trim() : ""
 }
 
 /** 备注值 → 小卡片列表：逗号（半角 / 全角）分隔，削首尾空白、丢掉空片段。 */
@@ -37,10 +40,12 @@ export function hubTags(node: { public_remark?: string | null }): string[] {
 
 /** 私有备注 → 一枚枚小卡片：**先按换行分段、段内再按逗号拆**（hub 对它没有单行约束）。 */
 export function ownTags(node: { remark?: string | null }): string[] {
-  return (node.remark ?? "")
+  // 与 publicRemark 同一道闸：类型漂移（数字 / 对象）＝没写，不让 `.split` 抛出去。
+  return (typeof node.remark === "string" ? node.remark : "")
     // 换行口径：`\n` / `\r\n` 之外，裸 `\r`（接口写入与历史数据都可能带）
     // 以及 `\u000b\f\u2028\u2029` 这些「也算换行」的控制符一并拆开 ——
     // splitTags 认全角逗号的细致程度摆在那儿，只认 `\n` 会漏掉一整段（2026-10-15 审出来）。
+    // eslint-disable-next-line no-control-regex -- 这些控制符本身就是「也算换行」的那一档，是有意匹配的
     .split(/[\r\n\u000b\f\u2028\u2029]+/)
     .flatMap((line) => splitTags(line))
 }

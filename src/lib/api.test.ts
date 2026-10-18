@@ -16,7 +16,8 @@ for (const patch of [{ load: null }, { load: [1, "bad", 3] }, { cpu: "bad" }, { 
   assert.equal(result[1], node)
 }
 // ★顶层字段（UI 直接读 os / cpu_name / currency）形状漂移时也要归一：类型上它们是 string，
-// 运行时缺了会让 osName()/cpuName()/money() 抛 TypeError，而整页没有错误边界（2026-10-15 审出来）。
+// 运行时缺了会让 osName()/cpuName()/money() 抛 TypeError —— main.tsx 的错误边界会兜住，
+// 但那时访客看到的已经是「页面渲染出错」而不是状态页。
 for (const field of ["os", "cpu_name", "currency"] as const) {
   const broken = { ...node, [field]: 123 } as unknown as Node
   assert.equal(safeNodes([broken])[0][field], "", `${field} 不是字符串时要收成空串`)
@@ -26,4 +27,31 @@ for (const field of ["os", "cpu_name", "currency"] as const) {
   // 归一顶层字段不该顺手把 metrics 丢掉。
   assert.notEqual(safeNodes([broken])[0].metrics, null)
 }
+// ★2026-10-18：渲染路径直接读的**可选**字符串字段（旗子 / 备注 / 名字 / 那一串 join 的字段）
+// 在场但类型不对时同样要归一成空串 —— 它们一路透传就是渲染期 TypeError：
+//   Country 里 `(country || "").trim()`、备注里 `(public_remark ?? "").trim()` / `.split()`。
+for (const field of ["name", "country", "kernel", "arch", "virt", "billing_cycle", "traffic_mode", "public_remark", "remark"] as const) {
+  const broken = { ...node, [field]: 42 } as unknown as Node
+  assert.equal(safeNodes([broken])[0][field], "", `${field} 在场但不是字符串时要收成空串`)
+  // 而**缺失**仍然是健康的：上面那条身份不变式用的就是一个没有这些字段的节点。
+  const missing = { ...node } as Record<string, unknown>
+  delete missing[field]
+  assert.equal(safeNodes([missing as unknown as Node])[0], missing, `${field} 缺失时节点原样透传`)
+}
+
+// ★2026-10-18：可选读数（swap / tcp / udp / procs 是 hub 1.4.1 才补的）缺一个键**不许**把整份
+// 实时数据丢掉 —— 归一成 null，核心读数照常显示（否则老 hub 上卡片读数全「—」、还全部沉底）。
+const originalCpu = node.metrics?.cpu
+for (const field of ["swap_total", "swap_used", "tcp", "udp", "procs"] as const) {
+  const partial = { ...node, metrics: { ...node.metrics } } as unknown as Node
+  delete (partial.metrics as unknown as Record<string, unknown>)[field]
+  const got = safeNodes([partial])[0]
+  assert.notEqual(got.metrics, null, `${field} 缺失时不许把整份读数丢掉`)
+  assert.equal(got.metrics?.[field], null, `${field} 缺失时归一成 null`)
+  assert.equal(got.metrics?.cpu, originalCpu, `${field} 缺失不影响核心读数`)
+}
+// 核心读数坏掉时仍然整份不认（原来的口径不变）。
+assert.equal(safeNodes([{ ...node, metrics: { ...node.metrics, cpu: "bad" } } as unknown as Node])[0].metrics, null)
+assert.equal(safeNodes([{ ...node, metrics: { ...node.metrics, net_rx: Infinity } } as unknown as Node])[0].metrics, null)
+
 console.log("invalid live reports are isolated")

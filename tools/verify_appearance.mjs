@@ -145,6 +145,37 @@ check('系统暗 → 页面暗', s.dark === true, `dark=${s.dark}`)
 s = await load({ systemDark: false })
 check('系统亮 → 页面亮', s.dark === false, `dark=${s.dark}`)
 
+console.log('\n=== 首帧明暗：暗色访客不该先闪一屏亮色（2026-10-18）===')
+/**
+ * 判据：从 **document 起点**采样 body 的底色变化 —— 修复前（index.html 里没有那段内联脚本）
+ * 慢速网络下会先记到一帧亮色（实测亮屏 4.5 秒），修好后**第一条采样就必须已经是暗色**。
+ * 采样器用 addScriptToEvaluateOnNewDocument 注入，跑在页面任何脚本之前。
+ */
+await send('Page.addScriptToEvaluateOnNewDocument', {
+  source: `
+window.__bgLog = [];
+(function tick() {
+  if (document.body) {
+    var bg = getComputedStyle(document.body).backgroundColor;
+    var dark = document.documentElement.classList.contains('dark');
+    var last = window.__bgLog[window.__bgLog.length - 1];
+    if (!last || last.bg !== bg || last.dark !== dark) window.__bgLog.push({ t: Math.round(performance.now()), bg: bg, dark: dark });
+  }
+  if (performance.now() < 8000) requestAnimationFrame(tick);
+})();
+`,
+})
+const bgOf = async () => JSON.parse(await js('JSON.stringify(window.__bgLog || [])'))
+s = await load({ systemDark: true })
+let bg = await bgOf()
+check('★ 系统暗：第一帧就已经是暗色（没有先闪亮色）', bg.length > 0 && bg[0].dark === true, JSON.stringify(bg.slice(0, 3)))
+s = await load({ systemDark: false, visitor: 'dark' })
+bg = await bgOf()
+check('★ 系统亮、访客记着暗：第一帧就已经是暗色', bg.length > 0 && bg[0].dark === true, JSON.stringify(bg.slice(0, 3)))
+s = await load({ systemDark: true, visitor: 'light' })
+bg = await bgOf()
+check('★ 系统暗、访客记着亮：第一帧就是亮色（也不许反向闪）', bg.length > 0 && bg[0].dark === false, JSON.stringify(bg.slice(0, 3)))
+
 console.log('\n=== 访客自己的选择优先 ===')
 s = await load({ systemDark: false, visitor: 'dark' })
 check('系统亮、访客记着暗 → 页面暗', s.dark === true, `dark=${s.dark}`)

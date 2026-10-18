@@ -224,9 +224,15 @@ export function TimeChart({
 
   // 滚轮监听器只装一次，量程与几何从 ref 里现读（渲染期间写 ref 是「最新值」的标准做法，
   // 放 layout effect 里保证每次渲染后都对齐）。
-  const wheelRef = useRef({ lo: 0, hi: 0, plotH: 0, dataHi: 0 })
+  // ★`autoSpan` 也放进来（2026-10-18 审出）：onWheel 原来直接读闭包里的 `autoExtent`，而这条
+  //   监听只装一次 —— 悬浮 / 隐藏线路改变可见量程之后，跨度下限用的还是挂载那一刻的旧量程
+  //   （oxlint 的 exhaustive-deps 告警指的就是它）。现在与 lo/hi 一样从 ref 现读。
+  const wheelRef = useRef({ lo: 0, hi: 0, plotH: 0, dataHi: 0, autoSpan: 0 })
   useLayoutEffect(() => {
-    wheelRef.current = { lo: scale.lo, hi: scale.hi, plotH, dataHi: autoExtent?.[1] ?? 0 }
+    wheelRef.current = {
+      lo: scale.lo, hi: scale.hi, plotH, dataHi: autoExtent?.[1] ?? 0,
+      autoSpan: autoExtent ? autoExtent[1] - autoExtent[0] : 0,
+    }
   })
   useEffect(() => {
     const el = box.current
@@ -249,7 +255,7 @@ export function TimeChart({
       const anchor = st.hi - ratio * (st.hi - st.lo)
       // 跨度下限：min(1ms, 自动量程的 1/4)。亚毫秒线路的自动量程本来就窄于 1ms，
       // 固定 1ms 会把第一格滚轮变成「放大 + 锚点跳走」（2026-10-15 审出来）。
-      const floor = Math.min(ZOOM_MIN_SPAN, Math.max((autoExtent ? autoExtent[1] - autoExtent[0] : 0) * 0.25, 1e-9))
+      const floor = Math.min(ZOOM_MIN_SPAN, Math.max(st.autoSpan * 0.25, 1e-9))
       setYZoom(zoomSpan({ lo: st.lo, hi: st.hi, anchor, ratio, factor: f, floor, cap: zoomCapOf(st.dataHi) }))
     }
     el.addEventListener("wheel", onWheel, { passive: false })

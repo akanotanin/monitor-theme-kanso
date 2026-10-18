@@ -14,7 +14,11 @@ import { remarkChips, type RemarkChip } from "@/lib/notes"
  */
 function monthUsage(node: Node): number {
   if (typeof node.month_used === "number") return node.month_used
-  const { month_rx: rx, month_tx: tx } = node
+  // ★实时读数里的本月用量与顶层同源，但顶层缺失 / 滞后时（形状漂移、老 hub）它还在
+  //   （2026-10-18）：取得到就用它，两边都没有才按 0 算。
+  const m = node.metrics
+  const rx = m?.month_rx ?? node.month_rx ?? 0
+  const tx = m?.month_tx ?? node.month_tx ?? 0
   switch (node.traffic_mode) {
     case "up":
       return tx
@@ -31,7 +35,9 @@ function monthUsage(node: Node): number {
 // disk -- and the hub retains its traffic totals whether connected or not. A node
 // that never connected is the only case with nothing to show.
 export function deployed(node: Node) {
-  return node.cpu_cores > 0 || node.mem_total > 0
+  // ★2026-10-18：`metrics` 也算「已接入」—— 顶层规格（cores / mem / disk）缺失、而实时读数
+  //   好好的时候，原来会把一台活着的机器整张卡写成「还没有接入」；metrics 在就等于它报过到。
+  return node.cpu_cores > 0 || node.mem_total > 0 || node.metrics !== null
 }
 
 /**
@@ -198,6 +204,12 @@ export function NodeCard({ node, onOpen, onWarm }: {
   const m = node.metrics
   // 有实时数据才点绿（与沉底同一判据，见 live）。
   const on = live(node)
+  // ★2026-10-18：规格 / 累计一律**实时读数优先** —— 顶层字段缺失或滞后时，原来会印
+  //   「累计 0 B」「流量重置：每月 undefined 日」；metrics 里同一份值就在那儿。
+  const cores = node.cpu_cores || 0
+  const totalTx = m?.total_tx ?? node.total_tx ?? 0
+  const totalRx = m?.total_rx ?? node.total_rx ?? 0
+  const resetDay = node.traffic_reset_day > 0 ? node.traffic_reset_day : 0
   // 备注小卡片：私有在前、公有在后（与整页详情同一份，见 @/lib/notes）；访客那边 hub 只下发
   // 公有那几枚，所以同一个位置他们看到的就是公有。卡片这一侧只取前 CARD_CHIPS 枚。
   const chips = remarkChips(node).slice(0, CARD_CHIPS)
@@ -221,7 +233,7 @@ export function NodeCard({ node, onOpen, onWarm }: {
       // ★可访问名给**机器的名字**（掉线时补一句）：role=button 的元素如果不给，读屏会把整张卡的
       //   文字当名字念出来（实测 ~190 字：名字、系统、四个读数、速率、流量、底注全在内）。
       //   卡里的读数仍然在可访问树里（它们不是装饰），只是名字短了（2026-10-15 审出来）。
-      aria-label={on ? node.name : `${node.name}（已离线）`}
+      aria-label={deployed(node) && !node.online ? `${node.name}（已离线）` : node.name}
       className="min-w-0 cursor-pointer gap-0 px-4 py-3 transition-colors hover:border-foreground/25"
       role="button"
       tabIndex={0}
@@ -261,7 +273,7 @@ export function NodeCard({ node, onOpen, onWarm }: {
           <div data-metrics="" className="mt-1.5 grid grid-cols-4 gap-x-3 border-t pt-1.5">
             <Meter
               label="CPU"
-              title={`${node.cpu_cores} 核`}
+              title={cores > 0 ? `${cores} 核` : undefined}
               pct={m ? m.cpu : null}
               value={m ? `${m.cpu.toFixed(2)}%` : "—"}
             />
@@ -294,14 +306,14 @@ export function NodeCard({ node, onOpen, onWarm }: {
             <div className="min-w-0 pr-3">
               <div className="flex items-baseline justify-between gap-2 text-xs">
                 <span className="shrink-0 text-ok-ink">↑ 上传</span>
-                <span className="tnum min-w-0 truncate text-[11px] leading-4 text-muted-foreground">累计 {bytes(node.total_tx)}</span>
+                <span className="tnum min-w-0 truncate text-[11px] leading-4 text-muted-foreground">累计 {bytes(totalTx)}</span>
               </div>
               <div className="tnum mt-0.5 truncate text-sm font-semibold leading-5">{m ? rate(m.net_tx) : "—"}</div>
             </div>
             <div className="min-w-0 border-l pl-3">
               <div className="flex items-baseline justify-between gap-2 text-xs">
                 <span className="shrink-0 text-ok-ink">↓ 下载</span>
-                <span className="tnum min-w-0 truncate text-[11px] leading-4 text-muted-foreground">累计 {bytes(node.total_rx)}</span>
+                <span className="tnum min-w-0 truncate text-[11px] leading-4 text-muted-foreground">累计 {bytes(totalRx)}</span>
               </div>
               <div className="tnum mt-0.5 truncate text-sm font-semibold leading-5">{m ? rate(m.net_rx) : "—"}</div>
             </div>
@@ -312,7 +324,8 @@ export function NodeCard({ node, onOpen, onWarm }: {
           <div className="tnum mt-1.5 flex items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
             <span className="min-w-0 truncate font-medium text-foreground/85">{trafficFoot(node)}</span>
             <span className="shrink-0">
-              流量重置：{node.traffic_limit > 0 ? `每月 ${node.traffic_reset_day} 日` : "N/A"}
+              {/* 重置日缺失（形状漂移）写「—」而不是「每月 undefined 日」；不限量仍是 N/A。 */}
+              流量重置：{node.traffic_limit > 0 ? (resetDay > 0 ? `每月 ${resetDay} 日` : "—") : "N/A"}
             </span>
           </div>
           <div className="mt-1 h-[3px] w-full overflow-hidden rounded-full bg-muted">

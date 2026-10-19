@@ -96,8 +96,14 @@ function loadPct(node: Node): number | null {
  *   key 时才退回按 `expires_at` 自己数（见 @/lib/format 的 daysUntil）。
  */
 function noteText(node: Node): string {
-  const cycle = CYCLE_SHORT[node.billing_cycle]
-  const price = node.price > 0 ? `价格 ${money(node.price, node.currency)}${cycle ? `/${cycle}` : ""}` : ""
+  // ★`CYCLE_SHORT` 是普通对象：`billing_cycle = "constructor"` 会取到 Object 构造函数，
+  //   模板字符串把函数源码印到卡片上。`Object.hasOwn` 是零成本的闸（2026-10-20 审出）。
+  const cycle = Object.hasOwn(CYCLE_SHORT, node.billing_cycle) ? CYCLE_SHORT[node.billing_cycle] : ""
+  // ★价格只认数字：字符串 "349" 会让 `> 0` 为真、随后 moneyAmount 退成 ¥0.00
+  //   （有价格却显示 0，2026-10-20 审出）。
+  const price = typeof node.price === "number" && Number.isFinite(node.price) && node.price > 0
+    ? `价格 ${money(node.price, node.currency)}${cycle ? `/${cycle}` : ""}`
+    : ""
   const days = node.expires_in !== undefined ? node.expires_in : daysUntil(node.expires_at)
   const left = days === null || days === undefined ? ""
     : days < 0 ? `已过期 ${-days} 天` : days === 0 ? "今天到期" : `剩余 ${days} 天`
@@ -116,7 +122,10 @@ function noteText(node: Node): string {
  */
 export function Country({ node }: { node: Node }) {
   const [missing, setMissing] = useState(false)
-  const code = (node.country || "").trim().toUpperCase()
+  const raw = (node.country || "").trim().toUpperCase()
+  // 只认两位 ISO 码：长串 / 中文 / `../` 之类会让 `<img>` 去请求一个意外路径，
+  // 回退的徽标也会把名字行撑开（2026-10-20 审出）。形状不对就当没填。
+  const code = /^[A-Z]{2}$/.test(raw) ? raw : ""
   if (!code) return null
   if (missing) {
     return (
@@ -214,9 +223,10 @@ export function NodeCard({ node, onOpen, onWarm }: {
   // 公有那几枚，所以同一个位置他们看到的就是公有。卡片这一侧只取前 CARD_CHIPS 枚。
   const chips = remarkChips(node).slice(0, CARD_CHIPS)
   const note = noteText(node)
+  // 可访问名：名字 + 离线状态；空名字给一句兜底，别让链接没有名字。
+  const label = `${node.name || "未命名节点"}${deployed(node) && !node.online ? "（已离线）" : ""}`
   return (
     <Card
-      onClick={onOpen}
       // 摸到卡片（悬停 / 键盘 Tab 到它 / 手指按下）就先取详情那块 chunk：真要打开的人，
       // 鼠标按下去之前多半已经碰过这张卡了。见 App 的 warmDetail。
       onPointerOver={onWarm}
@@ -230,14 +240,16 @@ export function NodeCard({ node, onOpen, onWarm }: {
       // （2026-10-16 搜索删掉后，这里不再有「键盘选中」那圈 outline 与 data-selected。）
       data-node-card={node.id}
       data-status={on ? "on" : "off"}
-      // ★可访问名给**机器的名字**（掉线时补一句）：role=button 的元素如果不给，读屏会把整张卡的
-      //   文字当名字念出来（实测 ~190 字：名字、系统、四个读数、速率、流量、底注全在内）。
-      //   卡里的读数仍然在可访问树里（它们不是装饰），只是名字短了（2026-10-15 审出来）。
-      aria-label={deployed(node) && !node.online ? `${node.name}（已离线）` : node.name}
+      // ★整卡可点，但**语义控件是标题里的链接**（2026-10-20）：role="button" 的后代按 ARIA
+      //   是 presentational，会把四行读数从可访问树里盖掉；而铺满卡片的透明链接又会挡住卡内
+      //   各处的 title 悬停（核数 / 已用·总量 / 负载均值 / 国旗 / 备注全文）与文字选择。
+      //   现在 h2 里是一枚真链接（Ctrl/⌘、中键、右键、Enter 都成立），卡根只兜住其余区域的
+      //   左键点击 —— 点击范围不变，读数、title、选区都还在。
+      onClick={(e) => {
+        if (e.target instanceof Element && e.target.closest("a")) return
+        onOpen()
+      }}
       className="min-w-0 cursor-pointer gap-0 px-4 py-3 transition-colors hover:border-foreground/25"
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen())}
     >
       {/* ① 身份行：旗子 + 名字（+ 离线徽章）。**没有状态点**。
           ★那枚 8px 的绿 / 红点 2026-10-15 按站长的要求去掉了（「卡片上的国旗旁边的小圆点去掉」）：
@@ -251,7 +263,23 @@ export function NodeCard({ node, onOpen, onWarm }: {
           有/无徽章一律 22px（2026-10-15 站长要求「卡片大小与备注无关」时顺手一起钉平）。 */}
       <div className="flex h-[22px] min-w-0 items-center gap-2">
         <Country node={node} />
-        <h3 className="min-w-0 flex-1 truncate text-sm font-semibold leading-5 tracking-tight">{node.name}</h3>
+        <h2 className="min-w-0 flex-1 text-sm font-semibold leading-5 tracking-tight">
+          {/* 链接只包住名字；`after` 把命中区上下各撑 3px（20 → 26px，过 WCAG 2.2 的 24px），
+              只罩住名字这一段，不挡旗子 / 徽章 / 读数格的 title。 */}
+          <a
+            href={`/node/${node.id}`}
+            aria-label={label}
+            className="relative block min-w-0 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-foreground after:absolute after:inset-x-0 after:-inset-y-[3px] after:content-['']"
+            onClick={(e) => {
+              // 修饰键 / 中键交还给浏览器（新标签页能直接打开 /node/:id）。
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+              e.preventDefault()
+              onOpen()
+            }}
+          >
+            <span className="block truncate">{node.name}</span>
+          </a>
+        </h2>
         {/* 徽章只给「接入过、现在掉线」的机器：从未接入的卡片下面那行说明已经说清了，
             连上但还没上报的更不该被盖上「已离线」。 */}
         {deployed(node) && !node.online && (

@@ -75,6 +75,18 @@ for (const icon of ['/favicon.svg', '/apple-touch-icon.png']) {
 for (const file of ['public/favicon.svg', 'public/favicon.ico', 'public/apple-touch-icon.png']) {
   if (!existsSync(file)) bad.push(`缺少 ${file}`)
 }
+// 发版时最容易漂的是两个版本号：theme.json 给面板看、package.json 给 npm / CI 看。
+// 不一致时面板显示一个版本、包里却是另一个 —— 不报错，只是谁也说不清现站跑的是哪一版。
+const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
+if (pkg.version !== manifest.version) {
+  bad.push(`版本号不一致：theme.json ${manifest.version} / package.json ${pkg.version}`)
+}
+// lock 文件的根版本也要跟：npm ci 不看它，下一次 npm install 却会静默改回去。
+const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'))
+const lockVersions = [lock.version, lock.packages?.['']?.version].filter((v) => v !== manifest.version)
+if (lockVersions.length) {
+  bad.push(`package-lock.json 根版本 ${[...new Set(lockVersions)].join(' / ')} != ${manifest.version}`)
+}
 if (bad.length) throw new Error(`缓存键或早跑脚本对不上：\n  ${bad.join('\n  ')}`)
 console.log(`缓存键一致：${CACHES.map((c) => `${c.what} ${c.key}（${c.places.length} 处）`).join('、')}；早跑脚本在 index.html 里；首帧明暗脚本在入口模块之前；站点图标两条静态引用与三份兜底文件都在`)
 

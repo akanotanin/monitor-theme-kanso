@@ -122,7 +122,7 @@ async function load({ hub }) {
   hubIcon = hub
   resetHits(); iconReqs = []
   await send('Page.navigate', { url: `${BASE}/` })
-  for (let i = 0; i < 40; i++) { await sleep(250); if (await js('document.querySelectorAll("[role=button]").length > 0')) break }
+  for (let i = 0; i < 40; i++) { await sleep(250); if (await js('document.querySelectorAll("[data-node-card]").length > 0')) break }
   await sleep(2500)
   const s = await readState()
   s.hits = hits

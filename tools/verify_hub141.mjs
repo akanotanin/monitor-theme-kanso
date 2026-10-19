@@ -157,7 +157,7 @@ check('★ 顶栏在（页面没有整页卸载）', await js(`!!document.queryS
 // 存储被禁时，会话内照样能切深浅色（只是记不住）。★ 点击后要等一拍：class 是 effect 里换的。
 const beforeDark = await js(`document.documentElement.classList.contains('dark')`)
 const clicked = await js(`(() => {
-  const btn = [...document.querySelectorAll('button')].find((b) => /切换主题/.test(b.getAttribute('title') || b.getAttribute('aria-label') || ''))
+  const btn = document.querySelector('button[data-theme-toggle]')
   if (!btn) return 'no-button'
   btn.click()
   return 'clicked'

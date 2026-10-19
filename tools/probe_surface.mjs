@@ -47,7 +47,7 @@ const dump = await js(`(() => {
   const h2 = q('main h2'); if (h2) out['详情标题 h2'] = eff(h2)
   const dt = q('main dt'); if (dt) out['读数格 dt'] = eff(dt)
   const dd = q('main dd'); if (dd) out['读数格 dd'] = eff(dd)
-  const h4 = q('main h4'); if (h4) out['小节标题 h4'] = eff(h4)
+  const h3 = q('main h3'); if (h3) out['小节标题 h3'] = eff(h3)
   const tab = q('main button'); if (tab) out['页签 button'] = eff(tab)
   const has = [...document.querySelectorAll('main [class*=rounded]')].slice(0, 400)
   const uniq = {}

@@ -4,7 +4,7 @@
 //
 // Nothing imports it, so the bundle never includes it.
 import {
-  axisBytes, axisTop, bytes, CYCLE_SHORT, cpuName, daysUntil, despike, innerTicks, osName, pair, percent, quarters, rate, timeTicks, uptime, zoomSpan,
+  axisBytes, axisTop, bytes, CYCLE_SHORT, cpuName, daysUntil, despike, innerTicks, nearestIndexByTime, osName, pair, percent, quarters, rate, timeTicks, uptime, zoomSpan,
 } from "./format.ts"
 
 let failed = 0
@@ -115,7 +115,25 @@ for (const max of [3_000, 300_000, 3_000_000, 300_000_000]) {
   eq(percent(NaN, 4), 0, "NaN 读数夹到 0")
   eq(percent(1, NaN), 0, "坏总量回 0（不能是 NaN —— 卡片直接拿它当 width）")
   eq(percent(3, 4), 75, "正常值不变")
-  eq(daysUntil("2027-07-21T00:00:00Z"), daysUntil("2027-07-21"), "带时间的日期串按同一日算")
+  // 时间戳按**本地**日历日归零：同一 UTC 时刻在 UTC-5 是前一日，断言必须跟着本地日期走，
+  // 否则这条测试在美洲时区必红（2026-10-20 复审出）。
+  const localDay = (s: string) => {
+    const d = new Date(s)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+  }
+  eq(daysUntil("2027-07-21T00:00:00Z"), daysUntil(localDay("2027-07-21T00:00:00Z")), "带时间的日期串按本地日历日归零")
+  eq(daysUntil("2027-07-21 12:00:00"), daysUntil("2027-07-21"), "空格写法也按同一日算")
+}
+
+// 图表悬停按时间找点（2026-10-20）：`view` 只在有采样的桶上留行，缺口时下标≠时间。
+{
+  const rows = [0, 60_000, 120_000, 600_000, 660_000].map((ts) => ({ ts }))
+  eq(nearestIndexByTime(rows, 300_000), 2, "缺口中间：取更近的前一行")
+  eq(nearestIndexByTime(rows, 400_000), 3, "越过中点：取后一行")
+  eq(nearestIndexByTime(rows, 600_000), 3, "正好落在行上")
+  eq(nearestIndexByTime(rows, -1), 0, "早于第一行")
+  eq(nearestIndexByTime(rows, 9e9), 4, "晚于最后一行")
+  eq(nearestIndexByTime([], 1), 0, "空数组退 0")
 }
 
 // daysUntil: whole days, negative once past, null when there is no date.

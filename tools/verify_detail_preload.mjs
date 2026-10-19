@@ -65,12 +65,12 @@ await send('Page.enable'); await send('Runtime.enable'); await send('Network.ena
 // stubIdle 时 requestIdleCallback 被换成永不回调的桩 —— 这样「悬停/点击触发了下载」才是干净的证据。
 const probeSource = (stubIdle) => `(function () {
   window.__m = { cards: null, chunkMs: null, chunkCount: 0, skeletonMax: 0, skeletonAt: null, chart: null, idleCalls: 0, idleRequests: [], hoverAt: null, clickAt: null, enters: 0, navAt: performance.now() }
-  document.addEventListener('pointerover', function (e) { if (e.target && e.target.closest && e.target.closest('[data-slot="card"][role="button"], table tbody tr[role="button"]')) window.__m.enters++ }, true)
+  document.addEventListener('pointerover', function (e) { if (e.target && e.target.closest && e.target.closest('[data-node-card], table tbody tr[role="button"]')) window.__m.enters++ }, true)
   // 「列表出现」用 MutationObserver 记（dom 一变就是它），别用 5ms 轮询：主线程忙的时候
   // 那个轮询自己会被推后两百多毫秒，于是把「画完才取 chunk」误判成「取在画之前」。
   try {
     new MutationObserver(function () {
-      if (window.__m.cards === null && document.querySelector('[data-slot="card"][role="button"], table tbody tr[role="button"]')) window.__m.cards = Math.round(performance.now())
+      if (window.__m.cards === null && document.querySelector('[data-node-card], table tbody tr[role="button"]')) window.__m.cards = Math.round(performance.now())
     }).observe(document.documentElement, { childList: true, subtree: true })
   } catch (e) {}
   if (!${stubIdle}) {
@@ -85,7 +85,7 @@ const probeSource = (stubIdle) => `(function () {
     }).observe({ type: 'resource', buffered: true })
   } catch (e) {}
   setInterval(function () {
-    if (window.__m.cards === null && document.querySelector('[data-slot="card"][role="button"], table tbody tr[role="button"]')) window.__m.cards = Math.round(performance.now())
+    if (window.__m.cards === null && document.querySelector('[data-node-card], table tbody tr[role="button"]')) window.__m.cards = Math.round(performance.now())
     if (window.__m.chart === null && location.pathname.indexOf('/node/') === 0) {
       const main = document.querySelector('main')
       const el = main && main.lastElementChild
@@ -113,7 +113,7 @@ async function load({ width, height, mobile, stubIdle, wait = 9000 }) {
   return JSON.parse(await js('JSON.stringify(window.__m)'))
 }
 const res = async () => JSON.parse(await js(`JSON.stringify(performance.getEntriesByType('resource').map(e => ({ n: e.name.replace(location.origin, ''), t: Math.round(e.startTime), d: Math.round(e.duration), b: e.transferSize })))`))
-const cardBox = async () => JSON.parse(await js(`(() => { const el = document.querySelector('[data-slot="card"][role="button"], table tbody tr[role="button"]'); if (!el) return 'null'; el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return JSON.stringify({ x: Math.round(r.x + Math.min(r.width / 2, 60)), y: Math.round(r.y + Math.min(18, r.height / 2)) }) })()`))
+const cardBox = async () => JSON.parse(await js(`(() => { const el = document.querySelector('[data-node-card], table tbody tr[role="button"]'); if (!el) return 'null'; el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return JSON.stringify({ x: Math.round(r.x + Math.min(r.width / 2, 60)), y: Math.round(r.y + Math.min(18, r.height / 2)) }) })()`))
 const clickAt = async ({ x, y }) => {
   await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 })
   await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 })
@@ -144,7 +144,7 @@ if (want(1)) {
   check(m.chunkMs === null || (nodesEnd !== null && m.chunkMs >= nodesEnd), '节点数据回来之后才取它（不再和第一批数据抢那条链路）', `chunk=${m.chunkMs ?? '未取'}ms / /api/nodes=${nodesEnd}ms`)
   check(m.chunkMs === null || (entryEnd !== null && m.chunkMs >= entryEnd), '入口包下完之后才取它（不再和入口包抢那条链路，这一条改动前是碰运气）', `chunk=${m.chunkMs ?? '未取'}ms / 入口包下完=${entryEnd}ms`)
   check(chunk && chunk.t === m.chunkMs, '性能条目与 chunk 记录一致（护栏本身看得见这块 chunk）', `entry=${chunk?.t ?? '无'}ms`)
-  const cards = await js(`document.querySelectorAll('[data-slot="card"][role="button"], table tbody tr[role="button"]').length`)
+  const cards = await js(`document.querySelectorAll('[data-node-card], table tbody tr[role="button"]').length`)
   check(cards === wantNodes, '列表卡片数 == 上游节点数（渲染结果没退化）', `${cards} / ${wantNodes}`)
 }
 

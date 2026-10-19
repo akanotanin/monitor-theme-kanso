@@ -150,7 +150,7 @@ await send('Emulation.setDeviceMetricsOverride', { width: 1000, height: 1200, de
 
 // 每一块面板量：标题、svg 尺寸、Y 轴刻度文字、X 轴刻度文字、面积/折线路径、路径里的断笔数
 const PROBE = `(() => {
-  const panels = [...document.querySelectorAll('h4')].filter((h) => /^(CPU|内存|网络速率|硬盘|TCP)/.test(h.textContent || ''))
+  const panels = [...document.querySelectorAll('h3')].filter((h) => /^(CPU|内存|网络速率|硬盘|TCP)/.test(h.textContent || ''))
   return JSON.stringify(panels.map((h) => {
     const box = h.parentElement
     const svg = box.querySelector('svg')
@@ -162,9 +162,12 @@ const PROBE = `(() => {
     const chartBox = box.querySelector('div')
     return {
       title: (h.textContent || '').slice(0, 14),
+      // 容量为 0 时面板改画「未上报…总量」文字，不再有 svg（2026-10-20）。
+      note: /未上报/.test(box.innerText),
       chartH: chartBox ? Math.round(chartBox.getBoundingClientRect().height) : 0,
       svg: rect ? { w: Math.round(rect.width), h: Math.round(rect.height) } : null,
       ariaLabel: svg ? svg.getAttribute('aria-label') : null,
+      ariaDescription: svg ? svg.getAttribute('aria-description') : null,
       ys, xs,
       area: paths.filter((p) => getComputedStyle(p).fill !== 'none').length,
       line: paths.filter((p) => getComputedStyle(p).stroke !== 'none' && p.getAttribute('stroke-width')).length,
@@ -209,7 +212,7 @@ async function shot(name, selector) {
       const r = el.getBoundingClientRect()
       return { x: Math.max(0, Math.round(r.x - 6)), y: Math.round(r.y + scrollY - 6), width: Math.round(r.width + 12), height: Math.round(r.height + 12), scale: 2 }
     }
-    const els = [...document.querySelectorAll('h4')].filter((h) => /^(CPU|内存|网络速率|硬盘)/.test(h.textContent || ''))
+    const els = [...document.querySelectorAll('h3')].filter((h) => /^(CPU|内存|网络速率|硬盘)/.test(h.textContent || ''))
     if (els.length < 4) return null
     const first = els[0].getBoundingClientRect()
     const last = els[els.length - 1].parentElement.getBoundingClientRect()
@@ -231,10 +234,14 @@ const PANELS = ['网络速率', 'TCP / UDP', 'CPU', '内存', '硬盘']
 check('五块面板都在、且次序＝网络速率 / TCP / UDP 连接 / CPU / 内存 / 硬盘',
   charts.length === 5 && PANELS.every((t, i) => (charts[i]?.title || '').startsWith(t)),
   JSON.stringify(charts.map((c) => c.title)))
-check('每块都有一张 svg，且撑满图表容器（h-40 = 160）',
-  charts.length === 5 && charts.every((c) => c.svg && Math.abs(c.svg.h - c.chartH) <= 2 && c.chartH === 160),
-  JSON.stringify(charts.map((c) => `${c.title} svg ${c.svg?.w}×${c.svg?.h} / 容器 ${c.chartH}`)))
+check('每块都有一张 svg，且撑满图表容器（h-40 = 160；总量未上报的块允许文字占位）',
+  charts.length === 5 && charts.every((c) => (c.svg ? Math.abs(c.svg.h - c.chartH) <= 2 && c.chartH === 160 : c.note)),
+  JSON.stringify(charts.map((c) => `${c.title} svg ${c.svg?.w}×${c.svg?.h} / 容器 ${c.chartH} / 占位 ${c.note}`)))
 check('每张 svg 都带 aria-label（读屏知道画的是什么）', charts.every((c) => !!c.ariaLabel), JSON.stringify(charts.map((c) => c.ariaLabel)))
+const drawn = charts.filter((c) => c.area > 0 || c.line > 0)
+check('★ 图表把可见量程写进 aria-description（有数据的图才有；读屏拿不到悬停）',
+  drawn.length > 0 && drawn.every((c) => /最低 .+，最高 /.test(c.ariaDescription ?? '')),
+  JSON.stringify(drawn.map((c) => `${c.title}:${c.ariaDescription}`)))
 check('Y 轴 5 条刻度、X 轴有时刻标签',
   charts.every((c) => c.ys.length === 5 && c.xs.length >= 3),
   JSON.stringify(charts.map((c) => `${c.title} y=${c.ys.length} x=${c.xs.length}`)))
@@ -284,7 +291,7 @@ if (!REAL && !UPSTREAM) {
 
 // 悬停：鼠标落到 CPU 那块绘图区中间，应该出一枚 tooltip（时间戳 + CPU + 带 % 的值）
 await js(`(() => {
-  const h = [...document.querySelectorAll('h4')].find((x) => /^CPU/.test(x.textContent || ''))
+  const h = [...document.querySelectorAll('h3')].find((x) => /^CPU/.test(x.textContent || ''))
   const rect = h.parentElement.querySelector('svg rect[fill="transparent"]')
   if (!rect) return null
   const r = rect.getBoundingClientRect()
@@ -298,7 +305,7 @@ check('悬停出 tooltip：带时间戳 + 系列名 + 带单位的值', !!tip &&
 
 // ★2026-10-16：TCP / UDP 面板的悬停 tooltip —— 两条线的名字（TCP / UDP）都该在。
 await js(`(() => {
-  const h = [...document.querySelectorAll('h4')].find((x) => /^TCP/.test(x.textContent || ''))
+  const h = [...document.querySelectorAll('h3')].find((x) => /^TCP/.test(x.textContent || ''))
   h.scrollIntoView({ block: 'center' })
   const rect = h.parentElement.querySelector('svg rect[fill="transparent"]')
   const r = rect.getBoundingClientRect()
@@ -315,7 +322,7 @@ if ((charts[1]?.breaks ?? []).some((n) => n >= 1)) {
   console.log('SKIP  ★ TCP / UDP 面板 tooltip（这台 hub 的历史桶没有连接数列，面板留白）')
 }
 // 还原机位：接下来那组用例量的是 CPU 那块绘图区，别把它留在屏幕外。
-await js(`(() => { const h = [...document.querySelectorAll('h4')].find((x) => /^CPU/.test(x.textContent || '')); h && h.scrollIntoView({ block: 'center' }); return true })()`)
+await js(`(() => { const h = [...document.querySelectorAll('h3')].find((x) => /^CPU/.test(x.textContent || '')); h && h.scrollIntoView({ block: 'center' }); return true })()`)
 await sleep(200)
 
 // 卡片要**跟着鼠标走**（原来钉在图表顶端）：同一列上下各停一次，卡片纵向位置得跟着变，
@@ -324,7 +331,7 @@ await sleep(200)
 //   （第一版就是这么误判成「没跟着走」的）。
 const hoverAt = async (fy) => {
   await js(`(() => {
-    const h = [...document.querySelectorAll('h4')].find((x) => /^CPU/.test(x.textContent || ''))
+    const h = [...document.querySelectorAll('h3')].find((x) => /^CPU/.test(x.textContent || ''))
     const rect = h.parentElement.querySelector('svg rect[fill="transparent"]')
     const r = rect.getBoundingClientRect()
     rect.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: r.x + r.width / 2, clientY: r.y + r.height * ${fy} }))
@@ -332,7 +339,7 @@ const hoverAt = async (fy) => {
   })()`)
   await sleep(180)
   return JSON.parse(await js(`(() => {
-    const h = [...document.querySelectorAll('h4')].find((x) => /^CPU/.test(x.textContent || ''))
+    const h = [...document.querySelectorAll('h3')].find((x) => /^CPU/.test(x.textContent || ''))
     const r = h.parentElement.querySelector('svg rect[fill="transparent"]').getBoundingClientRect()
     const card = [...document.querySelectorAll('div')].find((d) => /CPU/.test(d.textContent || '') && (d.className || '').includes('rounded-lg'))
     const b = card ? card.getBoundingClientRect() : null

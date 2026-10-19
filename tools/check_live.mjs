@@ -38,13 +38,13 @@ const js = async (e) => (await send('Runtime.evaluate', { expression: e, returnB
 await send('Page.enable'); await send('Runtime.enable'); await send('Network.enable')
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `(function () {
   window.__m = { cards: null, chunkUrl: null, chunkMs: null, chunkCount: 0, idleRequests: [], chart: null, clickAt: null, enters: 0, wsFirst: null }
-  document.addEventListener('pointerover', function (e) { if (e.target && e.target.closest && e.target.closest('[data-slot="card"][role="button"], table tbody tr[role="button"]')) window.__m.enters++ }, true)
+  document.addEventListener('pointerover', function (e) { if (e.target && e.target.closest && e.target.closest('[data-node-card], table tbody tr[role="button"]')) window.__m.enters++ }, true)
   // ★ observe 的目标必须是 **document**，不能是 document.documentElement：这段脚本在
   //   document 创建后、解析前执行，此时 documentElement 还是 null —— observe(null) 抛
   //   TypeError 并被下面的 catch 吞掉，这个观察器**从来没生效过**（m.cards 恒 null、
   //   打印成「卡片 nullms 出现」；2026-10-12 实测，改成 document 后正常记录）。
   //   verify_detail_preload 里同款观察器还配了一个 5ms 轮询兜底，所以那个脚本没暴露。
-  try { new MutationObserver(function () { if (window.__m.cards === null && document.querySelector('[data-slot="card"][role="button"], table tbody tr[role="button"]')) window.__m.cards = Math.round(performance.now()) }).observe(document, { childList: true, subtree: true }) } catch (e) {}
+  try { new MutationObserver(function () { if (window.__m.cards === null && document.querySelector('[data-node-card], table tbody tr[role="button"]')) window.__m.cards = Math.round(performance.now()) }).observe(document, { childList: true, subtree: true }) } catch (e) {}
   const ric = window.requestIdleCallback
   window.requestIdleCallback = function (cb, opt) { window.__m.idleRequests.push(Math.round(performance.now())); return ric.call(window, cb, opt) }
   // WS 首帧（数据另一条路）：HTTP 与 WS 并发，慢链路上谁先到都可能，判据要取较早者，
@@ -65,7 +65,7 @@ await sleep(7000)
 const m = JSON.parse(await js('JSON.stringify(window.__m)'))
 const perf = JSON.parse(await js(`JSON.stringify(performance.getEntriesByType('resource').map(e => ({ n: e.name.replace(location.origin,''), t: Math.round(e.startTime), d: Math.round(e.duration), b: e.transferSize })))`))
 const nodes = perf.find((e) => e.n === '/api/nodes')
-const cards = await js(`document.querySelectorAll('[data-slot="card"][role="button"], table tbody tr[role="button"]').length`)
+const cards = await js(`document.querySelectorAll('[data-node-card], table tbody tr[role="button"]').length`)
 const title = await js('document.title')
 console.log(`  站点 ${SITE}  标题「${title}」`)
 // 「不与首屏数据抢链路」的锚用**数据完成时刻**：HTTP（resource timing —— 网络栈记录，不受主线程
@@ -84,7 +84,7 @@ const ok2 = !WANT_CHUNK || (m.chunkUrl || '').includes(WANT_CHUNK)
 console.log(`  ${ok2 ? 'PASS' : 'FAIL'}  取的是这一版构建的那块 chunk（期望含 ${WANT_CHUNK}）`)
 console.log(`  ${cards > 0 ? 'PASS' : 'FAIL'}  列表渲染出来了（${cards} 台）`)
 // 点开一台机器
-const box = JSON.parse(await js(`(() => { const el = document.querySelector('[data-slot="card"][role="button"], table tbody tr[role="button"]'); if (!el) return 'null'; el.scrollIntoView({block:'center'}); const r = el.getBoundingClientRect(); return JSON.stringify({x: Math.round(r.x + Math.min(r.width/2, 60)), y: Math.round(r.y + Math.min(18, r.height/2))}) })()`))
+const box = JSON.parse(await js(`(() => { const el = document.querySelector('[data-node-card], table tbody tr[role="button"]'); if (!el) return 'null'; el.scrollIntoView({block:'center'}); const r = el.getBoundingClientRect(); return JSON.stringify({x: Math.round(r.x + Math.min(r.width/2, 60)), y: Math.round(r.y + Math.min(18, r.height/2))}) })()`))
 await js('window.__m.clickAt = Math.round(performance.now())')
 await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', clickCount: 1 })
 await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', clickCount: 1 })

@@ -94,7 +94,7 @@ for (const shot of SHOTS.filter((s) => !ONLY || s.name.includes(ONLY))) {
   for (let i = 0; i < 60; i++) { await sleep(400); if (await evalJS(`document.querySelectorAll('[data-node-card]').length > 0`)) break }
   await sleep(2500)
   if (shot.open) {
-    await evalJS(`document.querySelectorAll('[data-node-card]')[0]?.click()`)
+    await evalJS(`document.querySelector('[data-node-card] a')?.click()`)
     await sleep(1200)
     if (shot.open === 'latency') {
       await evalJS(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === '网络延迟')?.click()`)
@@ -142,8 +142,8 @@ for (const shot of SHOTS.filter((s) => !ONLY || s.name.includes(ONLY))) {
     touchIcon: document.querySelector('link[rel="apple-touch-icon"]')?.getAttribute('href') || '(没有)',
     // 分组标签已随精简移除：这里应当是空数组。
     groupTabs: [...document.querySelectorAll('[role=group][aria-label=分组] button')].map((b) => b.innerText),
-    cards: document.querySelectorAll('[role=button]').length,
-    h3: [...document.querySelectorAll('h3')].slice(0, 3).map((h) => h.textContent),
+    cards: document.querySelectorAll('[data-node-card]').length,
+    h2: [...document.querySelectorAll('h2')].slice(0, 3).map((h) => h.textContent),
     text: document.body.innerText.replace(/\\s+/g, ' ').slice(0, 220),
   })`)
   const parsed = JSON.parse(f)

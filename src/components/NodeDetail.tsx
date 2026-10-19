@@ -87,7 +87,9 @@ function Panel({ title, children, fill = false }: { title: string; children: Rea
         (fill ? " flex h-full min-h-0 flex-col" : "")
       }
     >
-      <h4 className="mb-2 shrink-0 text-xs font-medium text-muted-foreground">{title}</h4>
+      {/* ★层级：节点名是 h2，面板标题就该是 h3。原来写死 h4，列表页 h1 → 卡片 h3、
+          详情页 h2 → h4 都是跳级（2026-10-20 审出，axe 的 heading-order）。 */}
+      <h3 className="mb-2 shrink-0 text-xs font-medium text-muted-foreground">{title}</h3>
       <div className={fill ? "min-h-0 w-full flex-1 text-muted-foreground" : "h-40 w-full text-muted-foreground"}>
         {children}
       </div>
@@ -232,6 +234,8 @@ export function NodeDetail({ node, historyDays }: {
 
   useEffect(() => {
     let active = true
+    // 历史**只取一次**：换机器 / 量程 / 页签 / 点「重试」才重发；实时读数走 node prop。
+    // hub 对并发建窗口有上限（满了给 503），别拿定时轮询去打它。
     // The charts must not continue drawing the old range while the new one is in
     // flight.
     // oxlint-disable-next-line react/set-state-in-effect
@@ -246,16 +250,18 @@ export function NodeDetail({ node, historyDays }: {
     //
     // The tab determines which half is requested; the other accounted for a third
     // to two thirds of every response and was never drawn.
-    const points = Math.round(globalThis.innerWidth * (globalThis.devicePixelRatio || 1))
+    const points = Math.min(3000, Math.round(globalThis.innerWidth * (globalThis.devicePixelRatio || 1)))
     const series = tab === "latency" ? "ping" : "metrics"
+    // 历史是 hub 最贵的一条（并发建窗口有上限、满了会给 503）：超时放宽到 30 秒，
+    // 别套轻请求那条 12 秒（2026-10-20 审出）。
     api<{ metrics: Point[]; ping: PingPoint[]; probes: Probes; loss?: Loss }>(
       `/nodes/${node.id}/metrics?hours=${hours}&points=${points}&series=${series}`,
+      undefined,
+      30_000,
     )
       .then((next) => { if (active) setData(next) })
       .catch((e: Error) => {
-        // `|| "..."` as in App.tsx: HTTP/2 dropped statusText, so a bodiless
-        // failure from a proxy arrives as the empty string and renders as no
-        // error.
+        // 同 App.tsx：空消息会让错误面板看起来「没有错误」，给一句兜底。
         if (active) { setFailed(e.message || "网络错误"); setData({ metrics: [], ping: [], probes: {} }) }
       })
     return () => { active = false }
@@ -643,31 +649,41 @@ export function NodeDetail({ node, historyDays }: {
               own maximum, which is what an area chart does by default, puts
               127 MB of a 457 MB box at the top of the panel. The size is in the
               title because the axis top is claiming it. */}
-          <Panel title={`内存 · ${bytes(memTotal)}`}>
-            <TimeChart
-              rows={metricRows}
-              series={[{ key: "mem_used", name: "内存", color: "var(--chart-4)", area: true }]}
-              hours={hours}
-              top={memTotal}
-              yFormat={axisBytes}
-              format={(v) => bytes(v)}
-              label="内存使用量走势"
-            />
+          <Panel title={memTotal > 0 ? `内存 · ${bytes(memTotal)}` : "内存"}>
+            {memTotal > 0 ? (
+              <TimeChart
+                rows={metricRows}
+                series={[{ key: "mem_used", name: "内存", color: "var(--chart-4)", area: true }]}
+                hours={hours}
+                top={memTotal}
+                yFormat={axisBytes}
+                format={(v) => bytes(v)}
+                label="内存使用量走势"
+              />
+            ) : (
+              // 总量缺失时轴只能是 0~1 B，几百 MB 的线整条被裁到框外 —— 与其给一张空白图，
+              // 不如直说没上报（2026-10-20 审出）。
+              <p className="py-8 text-center text-sm text-muted-foreground">未上报内存总量</p>
+            )}
           </Panel>
 
           {/* The disk it is filling, for the same reason as memory: a node
               using 2.7% of its disk draws along the top of the panel when the
               axis tracks the window's own maximum. */}
-          <Panel title={`硬盘 · ${bytes(diskTotal)}`}>
-            <TimeChart
-              rows={metricRows}
-              series={[{ key: "disk_used", name: "硬盘", color: "var(--chart-3)", area: true }]}
-              hours={hours}
-              top={diskTotal}
-              yFormat={axisBytes}
-              format={(v) => bytes(v)}
-              label="硬盘使用量走势"
-            />
+          <Panel title={diskTotal > 0 ? `硬盘 · ${bytes(diskTotal)}` : "硬盘"}>
+            {diskTotal > 0 ? (
+              <TimeChart
+                rows={metricRows}
+                series={[{ key: "disk_used", name: "硬盘", color: "var(--chart-3)", area: true }]}
+                hours={hours}
+                top={diskTotal}
+                yFormat={axisBytes}
+                format={(v) => bytes(v)}
+                label="硬盘使用量走势"
+              />
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">未上报硬盘总量</p>
+            )}
           </Panel>
         </div>
       )}

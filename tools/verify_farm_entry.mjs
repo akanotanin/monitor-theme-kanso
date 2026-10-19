@@ -104,7 +104,7 @@ const READ = `(() => {
   if (!header) return JSON.stringify({ ready: false });
   const btns = [...header.querySelectorAll('[data-slot="button"]')];
   const pick = (t) => header.querySelector('[data-slot="button"][title="' + t + '"]');
-  const farm = pick('农场入口'), moon = pick('切换主题'), admin = header.querySelector('a[href="/admin/"]');
+  const farm = pick('农场入口'), moon = header.querySelector('[data-theme-toggle]'), admin = header.querySelector('a[href="/admin/"]');
   const css = (el) => { const s = getComputedStyle(el); return { radius: s.borderRadius, padding: s.padding, color: s.color, bg: s.backgroundColor, w: s.width, h: s.height }; };
   const box = (el) => { const r = el.getBoundingClientRect(); return { x: Math.round(r.x), right: Math.round(r.right), w: Math.round(r.width), h: Math.round(r.height) }; };
   const svg = farm ? farm.querySelector('svg') : null;
@@ -128,7 +128,9 @@ const READ = `(() => {
 
 // 入口不出现时，顶栏剩下的那两枚（登录 / 月亮）——多一枚少一枚都算这行被弄乱了。
 // （2026-10-16 搜索那格整个删掉后，顶栏只剩按钮：登录 / 农场（装了才有）/ 月亮。）
-const HIDDEN_TITLES = '登录,切换主题'
+// 明暗按钮的 title 是动态的（「切换到浅色/深色主题」），按集合判，别写死旧文案。
+const MOON_TITLES = new Set(['切换到浅色主题', '切换到深色主题'])
+const hiddenTitlesOk = (titles) => titles.length === 2 && titles[0] === '登录' && MOON_TITLES.has(titles[1])
 const SCENARIOS = [
   // 只装主题、没装小鸡农场 —— 最常见的形态：这一枚不许出现。
   { name: '本站没装小鸡农场（默认设置）', config: {}, farm: false, visible: false, probes: 1 },
@@ -171,13 +173,15 @@ for (const [n, scenario] of SCENARIOS.entries()) {
 
   if (!scenario.visible) {
     check('入口不渲染', state.farmCount === 0, `farmCount=${state.farmCount}`)
-    check('相邻两枚仍在（只是这一枚不在，不是整行倒了）', state.titles.join(',') === HIDDEN_TITLES, state.titles.join(','))
+    check('相邻两枚仍在（只是这一枚不在，不是整行倒了）', hiddenTitlesOk(state.titles), state.titles.join(','))
   } else {
     check('入口在（真画出来了，有尺寸）', state.farmCount === 1 && (state.box.farm?.w ?? 0) > 0, `count=${state.farmCount} box=${JSON.stringify(state.box.farm)}`)
     check('href = 自动认出的 /chicken/', state.href === scenario.href, `href=${state.href}`)
     // 现在只有同域这一种：地址不再可配，图标永远是本站 `/chicken/`，就在当前标签页打开。
     check('同域：当前标签页打开（属于站内导航）', state.target === null && state.rel === null, `target=${state.target} rel=${state.rel}`)
-    check('顺序：登录 → 鸡 → 月亮（右侧就这三枚）', state.titles.join(',') === '登录,农场入口,切换主题', state.titles.join(','))
+    check('顺序：登录 → 鸡 → 月亮（右侧就这三枚）',
+      state.titles.length === 3 && state.titles[0] === '登录' && state.titles[1] === '农场入口' && MOON_TITLES.has(state.titles[2]),
+      state.titles.join(','))
     check('三枚的 class 逐字符相同（画风靠它保证）', state.cls.farm === state.cls.moon && state.cls.farm === state.cls.admin)
     // box 里只比尺寸——位置天生不同（它是另一枚按钮），比位置等于恒红。
     const sizeOf = (b) => (b ? { w: b.w, h: b.h } : null)

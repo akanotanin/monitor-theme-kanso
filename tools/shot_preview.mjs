@@ -78,7 +78,7 @@ await send('Page.navigate', { url: BASE + '/' })
 let cards = 0
 for (let i = 0; i < 60; i++) {
   await sleep(400)
-  cards = await evalJS(`document.querySelectorAll('[role=button]').length`)
+  cards = await evalJS(`document.querySelectorAll('[data-node-card]').length`)
   if (cards > 0) break
 }
 if (!cards) throw new Error('卡片一直没出现，别拍了（这张图会是骨架态）')
@@ -91,10 +91,10 @@ if (!cards) throw new Error('卡片一直没出现，别拍了（这张图会是
 let settled = false
 for (let i = 0; i < 60; i++) {
   const state = JSON.parse(await evalJS(`JSON.stringify({
-    cards: document.querySelectorAll('[role=button]').length,
+    cards: document.querySelectorAll('[data-node-card]').length,
     fonts: document.fonts.status,
     tnum: [...document.querySelectorAll('.tnum')].map((el) => el.textContent.trim()),
-    meters: [...document.querySelectorAll('[role=button] .h-full.rounded-full')].filter((el) => el.getBoundingClientRect().width > 0).length,
+    meters: [...document.querySelectorAll('[data-node-card] .h-full.rounded-full')].filter((el) => el.getBoundingClientRect().width > 0).length,
   })`))
   const garbage = state.tnum.some((t) => /[#&@!*^~]/.test(t))
   const empty = state.tnum.length === 0 || state.tnum.some((t) => !t)
@@ -106,7 +106,7 @@ await sleep(1200)
 
 // 3) 拍之前把滚动条与滚动位置也钉住，别让鼠标位置影响截图
 const geometry = JSON.parse(await evalJS(`JSON.stringify((() => {
-  const cs = [...document.querySelectorAll('[role=button]')]
+  const cs = [...document.querySelectorAll('[data-node-card]')]
   const last = cs[cs.length - 1]?.getBoundingClientRect()
   return {
     viewport: innerWidth + 'x' + innerHeight,
@@ -115,7 +115,7 @@ const geometry = JSON.parse(await evalJS(`JSON.stringify((() => {
     scrollbar: innerWidth - document.documentElement.clientWidth,
     cards: cs.length,
     lastCardBottom: last ? Math.round(last.bottom) : null,
-    h3: cs.slice(0, 3).map((c) => c.innerText.split('\\n')[0]),
+    names: cs.slice(0, 3).map((c) => c.innerText.split('\\n')[0]),
     siteName: document.querySelector('header')?.innerText.trim().split('\\n')[0] || '(空)',
     groupTabs: [...document.querySelectorAll('[role=group][aria-label=分组] button')].length,
     farmEntry: !!document.querySelector('a[title="农场入口"]'),

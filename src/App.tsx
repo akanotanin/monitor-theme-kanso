@@ -231,10 +231,8 @@ export default function App() {
   const [open, go] = useNodeRoute()
 
   const loadMe = useCallback(() => {
-    // `|| "..."` because an empty message reads as no error: api() falls back to
-    // res.statusText, which HTTP/2 and HTTP/3 removed, so a bodiless 502 from a
-    // proxy arrives as "". The check below would then take the loading branch and
-    // the retry button would never render.
+    // `|| "..."`: 空消息读起来像「没有错误」—— api() 现在会给 HTTP 状态兜一句中文，
+    // 但网络层/旧路径仍可能给空串；这一层别让重试按钮因此消失。
     return api<Me>("/me")
       .then((next) => { setMe(next); setMeError("") })
       .catch((e: Error) => setMeError(e.message || "网络错误"))
@@ -407,7 +405,15 @@ export default function App() {
               </a>
             </Button>
           )}
-          <Button variant="ghost" size="icon" onClick={toggleTheme} title="切换主题" aria-label="切换主题">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleTheme}
+            data-theme-toggle=""
+            // 动态说「点下去会发生什么」：固定的「切换主题」读屏不知道当前明暗（2026-10-20 审出）。
+            title={dark ? "切换到浅色主题" : "切换到深色主题"}
+            aria-label={dark ? "切换到浅色主题" : "切换到深色主题"}
+          >
             {dark ? <Sun /> : <Moon />}
           </Button>
           </div>
@@ -485,11 +491,24 @@ export default function App() {
  */
 function SiteIcon() {
   const [href] = useState(() => document.querySelector('link[rel~="icon"]')?.getAttribute("href") || "/favicon.svg")
+  const [src, setSrc] = useState(href)
   const [broken, setBroken] = useState(false)
-  if (broken) return null
   return (
     <span className="size-8 shrink-0 overflow-hidden rounded-full bg-muted ring-1 ring-border/60">
-      <img src={href} alt="" className="size-full object-cover" onError={() => setBroken(true)} />
+      {!broken && (
+        <img
+          src={src}
+          alt=""
+          className="size-full object-cover"
+          onError={() => {
+            // 站点图标取不到时先退回主题自带的那份；两份都挂时**保留这枚 32px 占位**，
+            // 只把图撤掉 —— 原来直接 return null，顶栏左侧整块消失、站名跟着左移
+            // （2026-10-20 复审出）。
+            if (src !== "/favicon.svg") setSrc("/favicon.svg")
+            else setBroken(true)
+          }}
+        />
+      )}
     </span>
   )
 }

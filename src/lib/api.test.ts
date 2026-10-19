@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import assert from "node:assert/strict"
-import { safeNodes, type Node } from "./api.ts"
+import { api, ApiError, safeNodes, type Node } from "./api.ts"
 
 // 一份**完整**的节点：safeNodes 对没病的节点原样透传（下面那条身份断言钉着这条不变式）。
 const node = { id: 1, name: "Node 01", os: "Debian 12", cpu_name: "AMD EPYC", currency: "CNY",
@@ -53,5 +53,34 @@ for (const field of ["swap_total", "swap_used", "tcp", "udp", "procs"] as const)
 // 核心读数坏掉时仍然整份不认（原来的口径不变）。
 assert.equal(safeNodes([{ ...node, metrics: { ...node.metrics, cpu: "bad" } } as unknown as Node])[0].metrics, null)
 assert.equal(safeNodes([{ ...node, metrics: { ...node.metrics, net_rx: Infinity } } as unknown as Node])[0].metrics, null)
+
+// ★2026-10-20：hub 的数组里混进 null / 数组 / 标量时，过滤掉而不是让 cleanStrings 抛 TypeError
+// （WS 的 onmessage 没人接这个异常，坏一帧就会把整条流卡在旧数据上）。
+const mixed = [null, node, undefined, [], 42] as unknown as Node[]
+const filtered = safeNodes(mixed)
+assert.equal(filtered.length, 1)
+assert.equal(filtered[0], node)
+
+// ★2026-10-20：api() 的三条边界 —— 超时要 reject（别让页面永远停在骨架屏）、
+// 反代的整页 HTML 不端给访客、短正文照常显示。用桩 fetch，不依赖网络。
+{
+  const realFetch = globalThis.fetch
+  const capture = async (fn: () => Promise<unknown>) => {
+    try { await fn(); return null } catch (e) { return e as ApiError }
+  }
+  globalThis.fetch = ((_url: string, init?: RequestInit) => new Promise((_, reject) => {
+    init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")))
+  })) as typeof fetch
+  const timedOut = await capture(() => api("/me", undefined, 20))
+  assert.equal(timedOut?.status, 0)
+  assert.match(String(timedOut?.message), /请求超时/)
+
+  globalThis.fetch = (async () => new Response("<html><body>502 Bad Gateway</body></html>", { status: 502 })) as typeof fetch
+  const html = await capture(() => api("/nodes"))
+  assert.equal(html?.status, 502)
+  assert.equal(html?.message, "请求失败（HTTP 502）")
+
+  globalThis.fetch = realFetch
+}
 
 console.log("invalid live reports are isolated")

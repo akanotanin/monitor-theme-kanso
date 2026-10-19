@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 
 import { ChartTooltip } from "@/components/ChartTooltip"
-import { clockFor, innerTicks, quarters, timeTicks, zoomSpan } from "@/lib/format"
+import { clockFor, innerTicks, nearestIndexByTime, quarters, timeTicks, zoomSpan } from "@/lib/format"
 
 /**
  * 零依赖的时间序列图：替掉 recharts（它给详情页背了 384KB 原始 / 110KB gzip 的包，
@@ -227,10 +227,10 @@ export function TimeChart({
   // ★`autoSpan` 也放进来（2026-10-18 审出）：onWheel 原来直接读闭包里的 `autoExtent`，而这条
   //   监听只装一次 —— 悬浮 / 隐藏线路改变可见量程之后，跨度下限用的还是挂载那一刻的旧量程
   //   （oxlint 的 exhaustive-deps 告警指的就是它）。现在与 lo/hi 一样从 ref 现读。
-  const wheelRef = useRef({ lo: 0, hi: 0, plotH: 0, dataHi: 0, autoSpan: 0 })
+  const wheelRef = useRef({ lo: 0, hi: 0, plotH: 0, plotW: 0, left: 0, dataHi: 0, autoSpan: 0 })
   useLayoutEffect(() => {
     wheelRef.current = {
-      lo: scale.lo, hi: scale.hi, plotH, dataHi: autoExtent?.[1] ?? 0,
+      lo: scale.lo, hi: scale.hi, plotH, plotW, left, dataHi: autoExtent?.[1] ?? 0,
       autoSpan: autoExtent ? autoExtent[1] - autoExtent[0] : 0,
     }
   })
@@ -238,8 +238,16 @@ export function TimeChart({
     const el = box.current
     if (!el || !wheelZoom || domain !== "auto") return
     const onWheel = (e: WheelEvent) => {
+      // Ctrl+滚轮是浏览器的页面缩放（触控板捏合也走这条），别吞掉。
+      if (e.ctrlKey) return
       const st = wheelRef.current
       if (st.plotH <= 0) return
+      const rect = el.getBoundingClientRect()
+      const px = e.clientX - rect.left
+      const py = e.clientY - rect.top
+      // 只接管绘图区：轴标签、边距上的滚轮还给页面滚动（2026-10-20 审出：原来挂在整盒上，
+      // 鼠标停在轴文字上滚页面也会被 preventDefault）。
+      if (px < st.left || px > st.left + st.plotW || py < TOP || py > TOP + st.plotH) return
       e.preventDefault()
       // deltaMode：0=像素（绝大多数）、1=行、2=页；先归一到「像素」口径。
       let d = e.deltaY
@@ -249,8 +257,7 @@ export function TimeChart({
       // 正好，触控板的小步长也顺；猛甩一下最多按 1.43× 走，不会一步飞天。
       d = Math.max(-240, Math.min(240, d))
       const f = Math.exp(d * 0.0015)
-      const rect = el.getBoundingClientRect()
-      const ratio = Math.min(Math.max((e.clientY - rect.top - TOP) / st.plotH, 0), 1)
+      const ratio = Math.min(Math.max((py - TOP) / st.plotH, 0), 1)
       // 锚点 = 光标当前压着的那个值。缩放后它还钉在同一行像素上 —— 滚轮「手感」的全部就是这一条。
       const anchor = st.hi - ratio * (st.hi - st.lo)
       // 跨度下限：min(1ms, 自动量程的 1/4)。亚毫秒线路的自动量程本来就窄于 1ms，
@@ -272,6 +279,16 @@ export function TimeChart({
     return 3
   })()
   const yLabel = yFormat ?? ((value: number) => String(Math.round(value * 10 ** yDigits) / 10 ** yDigits))
+  // 读屏用户拿不到悬停（2026-10-20 审出）：把可见量程的最低/最高挂到 `aria-description`，
+  // 名字仍是稳定的「内存使用量走势」——名字一变，按名字找图的护栏与外部脚本都会静默失配。
+  const spokenSummary = (() => {
+    const ext = extentOf(view, series.map((s) => s.key))
+    if (!ext) return undefined
+    // 用每张图自己的数值格式器，不用 Y 轴刻度格式器：刻度精度跟着网格步长走，
+    // CPU 0.2–0.4% 会被 yLabel 印成「0% / 0%」（2026-10-20 复审出）。
+    const fmt = format ?? ((value: number) => `${yLabel(value)}${unit}`)
+    return `可见区间最低 ${fmt(ext[0])}，最高 ${fmt(ext[1])}`
+  })()
   const xTicks = view.length > 1 ? timeTicks(t0, t1).filter((t) => t >= t0 && t <= t1) : []
   // ★格式跟着**可见区间**走，不是整窗（2026-10-15 审出来）：刻度位置本来就是按 t0/t1 算的，
   //   格式却取页签量程 —— 30 天窗口里放大到两小时，8 枚刻度相隔十几分钟却全印成「10/15」，
@@ -363,10 +380,16 @@ export function TimeChart({
     return out
   }
 
+  /**
+   * ★按**时间**找最近的一行，不是按数组下标（2026-10-20 审出）。
+   *   `view` 只在有采样的桶上留行：节点离线、探测全超时、长范围降采样时会出现缺口，
+   *   下标与 x 就不再成正比 —— 竖线和 tooltip 会跳到离指针很远的一格，显示邻桶的值。
+   *   x 轴本身是真时间轴（`x()`），所以这里也按时间二分。
+   */
   const indexAt = (clientX: number, el: Element) => {
     const rect = el.getBoundingClientRect()
-    const ratio = (clientX - rect.left) / Math.max(1, rect.width)
-    return Math.min(view.length - 1, Math.max(0, Math.round(ratio * (view.length - 1))))
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / Math.max(1, rect.width)))
+    return nearestIndexByTime(view, t0 + ratio * span)
   }
 
   const hovered = hover === null ? null : view[Math.min(Math.max(hover, 0), view.length - 1)]
@@ -389,7 +412,7 @@ export function TimeChart({
        整块关掉最省事；tooltip 是鼠标一离开就消失的临时卡片，同样不需要被选中。 */
     <div ref={box} data-chart="" className="relative h-full w-full select-none">
       {w > 0 && h > 0 && (
-        <svg width={w} height={h} role="img" aria-label={label} className="overflow-visible">
+        <svg width={w} height={h} role="img" aria-label={label} aria-description={spokenSummary} className="overflow-visible">
           {/* 网格：只画横线（原来 `vertical={false}`），虚线、用边框色。 */}
           {scale.ticks.map((v) => (
             <line
@@ -487,7 +510,9 @@ export function TimeChart({
               setPointerY(null)
             }}
             onPointerDown={(e) => {
-              if (!wheelZoom || e.button !== 0 || plotH <= 0) return
+              // 只排除触屏（2026-10-20 复审）：触屏单指的 `button` 也是 0，会让上滑页面
+              // 误拖 Y 量程；笔是有精度的指针设备，仍按鼠标处理。
+              if (!wheelZoom || e.pointerType === "touch" || e.button !== 0 || plotH <= 0) return
               // 捕获失败不该让整段拖动失效（指针已经消失、或合成事件没有有效 id 时会抛）。
               try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* 无所谓 */ }
               // 基准取**当前显示中的**量程：没缩过就是自动档那一段（照样能拖，拖完即手动档）。

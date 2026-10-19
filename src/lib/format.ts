@@ -103,11 +103,16 @@ export function uptime(seconds: number): string {
 /** Whole days until a date, negative once it has passed. */
 export function daysUntil(date?: string | null): number | null {
   if (!date) return null
-  // 只取日期那一段再拼零点：`expires_at` 的形状只有 `string | null` 这个约定，hub 换成
-  // RFC3339 / 带时间戳的写法时，直接拼 `T00:00:00` 会得到 Invalid Date —— 不报错、只是
-  // 卡片上「剩余 N 天」那半截静默消失（2026-10-15 审出来）。
-  const day = String(date).slice(0, 10)
-  const target = new Date(`${day}T00:00:00`).getTime()
+  // date-only 按本地零点算；带时间的完整时间戳先按**访客本地日历日**归到零点 —— 原来直接切
+  // 字符串前 10 位（UTC 日期），`...T23:00:00Z` 在 UTC+8 已经是第二天，会把「明天到期」
+  // 读成「今天到期」（2026-10-20 审出）。同一条时间戳在不同时区可能落在不同日期，这是
+  // 本地日历口径的应有之义。
+  const text = String(date).trim()
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(text)
+  // `YYYY-MM-DD HH:MM:SS` 这种空格写法 Safari 不认：只把日期与时间之间的那一个空格换成 T。
+  const at = new Date(dateOnly ? `${text}T00:00:00` : text.replace(/^(\d{4}-\d{2}-\d{2}) /, "$1T"))
+  if (Number.isNaN(at.getTime())) return null
+  const target = dateOnly ? at.getTime() : new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime()
   if (Number.isNaN(target)) return null
   return Math.ceil((target - Date.now()) / 86400000)
 }
@@ -233,6 +238,25 @@ export function timeTicks(from: number, to: number, count = 8): number[] {
   const ticks: number[] = []
   for (let t = Math.ceil((from - zone) / step) * step + zone; t <= to; t += step) ticks.push(t)
   return ticks
+}
+
+/**
+ * 时间序列里离 `target` 最近的一行（行按 ts 升序）。缺口不影响结果。
+ *
+ * 图表悬停必须按**时间**找点，不能按数组下标 —— `view` 只在有采样的桶上留行，
+ * 节点离线 / 探测全超时留下的缺口会让下标与 x 不再成正比（2026-10-20 审出）。
+ */
+export function nearestIndexByTime(rows: { ts: number }[], target: number): number {
+  if (rows.length === 0) return 0
+  let lo = 0
+  let hi = rows.length - 1
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (rows[mid].ts < target) lo = mid + 1
+    else hi = mid
+  }
+  if (lo > 0 && Math.abs(rows[lo - 1].ts - target) <= Math.abs(rows[lo].ts - target)) return lo - 1
+  return lo
 }
 
 /**

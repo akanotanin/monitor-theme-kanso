@@ -41,7 +41,8 @@
   // 带个只用于区分的查询参数：hub 不看查询串，这条请求只是好在日志与验收里
   // 与 App 那条 /api/me 分开（推迟其中一条，就能把「迟到的响应」这个竞态造出来）。
   fetch("/api/me?theme-title=1", { credentials: "same-origin" })
-    .then(function (r) { return r.json() })
+    // 401/404 也可能回一段 JSON：不是 200 就别拿它当站名（2026-10-20 审出）。
+    .then(function (r) { return r.ok ? r.json() : null })
     .then(function (d) {
       if (!d || !d.site_name || window.__titleOwned) return
       document.title = d.site_name

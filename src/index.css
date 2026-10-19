@@ -237,3 +237,16 @@
 .tap-8::before { inset: -6px; }
 .tap-y-6::before { inset: -10px 0; }
 
+/* 系统设了「减少动态效果」时，骨架屏的 pulse 与流量条的宽度过渡都停下来。
+   纯 CSS，跟随系统设置；前庭敏感用户不被动效打扰（2026-10-20 审出）。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+

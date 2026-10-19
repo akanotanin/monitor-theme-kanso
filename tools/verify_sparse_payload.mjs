@@ -164,7 +164,11 @@ const cards = JSON.parse(await js(`(() => {
   return JSON.stringify([...document.querySelectorAll('[data-node-card]')].map((c) => ({
     id: c.getAttribute('data-node-card'),
     status: c.getAttribute('data-status'),
-    aria: c.getAttribute('aria-label'),
+    // 2026-10-20：整卡可点改成语义链接（role=button 的后代是 presentational，
+    // 会把四行读数从可访问树里盖掉）。名字挂在铺满卡片的那枚 <a> 上。
+    aria: c.querySelector('a[href^="/node/"]')?.getAttribute('aria-label') ?? null,
+    link: !!c.querySelector('a[href^="/node/"]'),
+    role: c.getAttribute('role'),
     text: c.innerText,
     metrics: !!c.querySelector('[data-metrics]'),
     badges: [...c.querySelectorAll('[data-slot=badge]')].map((b) => b.textContent.trim()),
@@ -181,6 +185,8 @@ check('漂移那台：country 归一成「没写」，没有旗子也没有 42 �
 check('漂移那台：备注是数字＝没写，一枚小卡片都不摊', !/备注/.test(drifted?.text ?? '') && drifted?.badges.length === 0, '')
 check('★ 读屏名只在「接入过 + 掉线」那档补「已离线」：在线两台＝纯名字', one?.aria === '稀疏一号' && drifted?.aria === '漂移二号', `${one?.aria} / ${drifted?.aria}`)
 check('★ 从未接入那台读屏名是纯名字（不该念「已离线」）', never?.aria === '未接入三号', String(never?.aria))
+check('★ 卡根不再是 role=button（后代会 presentational、吞掉读数），点击语义交给标题里的链接',
+  cards.every((c) => c.link && c.role === null), JSON.stringify(cards.map((c) => `${c.link}/${c.role}`)))
 check('从未接入那台：仍是那行说明、没有读数区', /还没有接入/.test(never?.text ?? '') && never?.metrics === false, '')
 check('A 组控制台无异常', errors.length === 0, errors.slice(0, 2).join(' | ').slice(0, 200))
 
@@ -203,7 +209,7 @@ const chartsOk = await waitFor(`document.querySelectorAll('[data-chart]').length
 check('★ 点「重试」真的重发了请求（服务端计数 +1）', metricCalls === beforeRetry + 1, `${beforeRetry} → ${metricCalls}`)
 check('★ 重试后画出五张图、错误面板收掉', chartsOk && !(await js(`document.body.innerText.includes('读取历史数据失败')`)), `charts=${await js(`document.querySelectorAll('[data-chart]').length`)}`)
 const mem = JSON.parse(await js(`(() => {
-  const h = [...document.querySelectorAll('h4')].find((x) => /^内存/.test(x.textContent || ''))
+  const h = [...document.querySelectorAll('h3')].find((x) => /^内存/.test(x.textContent || ''))
   const svg = h?.parentElement?.querySelector('svg')
   return JSON.stringify({
     title: h?.textContent ?? null,

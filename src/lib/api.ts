@@ -94,13 +94,50 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    ...init,
-    headers: init?.body ? { "content-type": "application/json", ...init?.headers } : init?.headers,
-  })
-  if (!res.ok) throw new ApiError(res.status, (await res.text()) || res.statusText)
-  return res.status === 204 ? (undefined as T) : res.json()
+/** 轻请求（/api/me、/api/nodes）的默认上限；历史窗口由调用方放宽（hub 建窗口慢）。 */
+const API_TIMEOUT_MS = 12_000
+
+export async function api<T>(path: string, init?: RequestInit, timeoutMs = API_TIMEOUT_MS): Promise<T> {
+  // 不用 `AbortSignal.timeout`：iOS 16.4 之前的 Safari 没有它，而主题得能在旧机上跑。
+  // 没有超时的 fetch 在反代半开 / 移动网络挂起时**永远不会 reject** —— 页面就停在
+  // 「加载中…」或骨架屏上，连重试按钮都不出现（2026-10-20 审出）。
+  const control = new AbortController()
+  // 合并调用方传进来的 signal：`...init` 里的 signal 不能被下面这行静默覆盖
+  // （有调用方想取消时得真的能取消，2026-10-20 复审出）。
+  const external = init?.signal
+  const relay = () => control.abort()
+  if (external) {
+    if (external.aborted) control.abort()
+    else external.addEventListener("abort", relay, { once: true })
+  }
+  const timer = setTimeout(() => control.abort(), timeoutMs)
+  try {
+    const res = await fetch(`/api${path}`, {
+      ...init,
+      signal: control.signal,
+      headers: init?.body ? { "content-type": "application/json", ...init?.headers } : init?.headers,
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => "")
+      // 反代 502/504 会给一整页 HTML：原文只进控制台，面板上留一句能读的。
+      console.debug(`[api] ${path} -> ${res.status}`, body.slice(0, 500))
+      const text = body.trim()
+      const readable = text.length > 0 && text.length <= 120 && !text.startsWith("<")
+      throw new ApiError(res.status, readable ? text : `请求失败（HTTP ${res.status}）`)
+    }
+    return res.status === 204 ? (undefined as T) : await res.json()
+  } catch (err) {
+    if (err instanceof DOMException && (err.name === "AbortError" || err.name === "TimeoutError")) {
+      // 外部 signal 主动取消与本地超时是两件事，别都写成「超时」。
+      throw new ApiError(0, external?.aborted ? "请求已取消" : `请求超时（${Math.round(timeoutMs / 1000)} 秒）`)
+    }
+    // fetch 的网络层失败是 TypeError（"Failed to fetch"）：面板上写中文，别把浏览器原文端上去。
+    if (err instanceof TypeError) throw new ApiError(0, "网络错误")
+    throw err
+  } finally {
+    clearTimeout(timer)
+    external?.removeEventListener("abort", relay)
+  }
 }
 
 /** A malformed report must not remove every other node from the page. */
@@ -140,16 +177,21 @@ export function safeNodes(nodes: Node[]): Node[] {
     for (const key of optional) if (!number(next[key])) next[key] = null
     return next as unknown as Metrics
   }
-  return nodes.map((node) => {
-    // 没病的节点**原样透传**（不 clone）：api.test.ts 钉着这条不变式，别为了统一写法把它改成每次 spread。
-    const safe = cleanStrings(node) ? node : fixStrings(node)
-    const m = safe.metrics
-    if (!m) return safe
-    if (!(core.every((key) => number(m[key])) && Array.isArray(m.load) && m.load.length === 3 && m.load.every(number))) {
-      return { ...safe, metrics: null }
-    }
-    return hasOptional(m) ? safe : { ...safe, metrics: normalizeMetrics(m) }
-  })
+  return (nodes as unknown[])
+    // ★`null` 节点（或未来 hub 形状漂移）原来会让 `cleanStrings(null)` 在 `.map` 里抛
+    //   TypeError：HTTP 路径还能进 `.catch` 保住旧数据，WS 路径则是 `onmessage` 里未捕获的
+    //   异常 —— 这一帧被丢掉不算，坏帧持续时列表会一直停在旧数据上（2026-10-20 审出）。
+    .filter((node): node is Node => node !== null && typeof node === "object" && !Array.isArray(node))
+    .map((node) => {
+      // 没病的节点**原样透传**（不 clone）：api.test.ts 钉着这条不变式，别为了统一写法把它改成每次 spread。
+      const safe = cleanStrings(node) ? node : fixStrings(node)
+      const m = safe.metrics
+      if (!m) return safe
+      if (!(core.every((key) => number(m[key])) && Array.isArray(m.load) && m.load.length === 3 && m.load.every(number))) {
+        return { ...safe, metrics: null }
+      }
+      return hasOptional(m) ? safe : { ...safe, metrics: normalizeMetrics(m) }
+    })
 }
 
 /**
@@ -183,6 +225,15 @@ export function useNodes() {
     /** hub 每 2 秒推一帧：连着 15 秒一帧都没有，就当这条连接已经死了（≈ 丢 7 帧）。 */
     const STALE_MS = 15000
 
+    /** 握手（CONNECTING）的上限：代理接了 TCP 却不完成 WS 升级时，看门狗原来完全不管。 */
+    const CONNECT_MS = 10000
+    let connectingAt = 0
+
+    /** 同一条 /api/nodes 的并发去重：轮询、回前台、解析失败三条路可能同时撞上来。 */
+    let inflight: Promise<void> | null = null
+    /** 节点快照的代数：每接一帧 +1，用来丢掉迟到的旧 HTTP 快照（别让它盖掉更新的 WS 帧）。 */
+    let dataSeq = 0
+
     /**
      * ★非数组一律**忽略**（2026-10-18 审出）：原来写成 `Array.isArray(list) ? list : []`，
      * 于是**一帧心跳**（`{"type":"pong"}`）、一句 hello、或者 /api/nodes 被网关换成 `{}` 200，
@@ -191,21 +242,37 @@ export function useNodes() {
      */
     const receive = (list: unknown): boolean => {
       if (!Array.isArray(list)) return false
-      setNodes(safeNodes(list))
+      let safe: Node[]
+      try {
+        safe = safeNodes(list)
+      } catch {
+        // 坏帧不许带走整条流：这一帧当没收到，等下一帧 / 下一次轮询。
+        return false
+      }
+      dataSeq += 1
+      setNodes(safe)
       setError(null)
       setClosed(false)
       return true
     }
 
-    const fetchOnce = () =>
-      api<{ nodes?: unknown }>("/nodes")
+    const fetchOnce = () => {
+      if (inflight) return inflight
+      const startedAt = dataSeq
+      inflight = api<{ nodes?: unknown }>("/nodes")
         .then((d) => {
+          // 期间 WS 推来更新的快照 → 这条回包作废，别让旧快照盖掉新帧。
+          if (dataSeq !== startedAt) return
           if (!receive(d?.nodes)) throw new Error("节点数据格式不对")
         })
         .catch((e: Error) => {
+          if (dataSeq !== startedAt) return
           setError(e.message)
           if (e instanceof ApiError && e.status === 401) setClosed(true)
         })
+        .finally(() => { inflight = null })
+      return inflight
+    }
 
     /**
      * 兜底：**立刻补一次数**，然后轮询 + 5 秒后重连。两条路都会调它 —— 连接自己关掉（onclose）、
@@ -239,6 +306,13 @@ export function useNodes() {
       }
       socket = ws
       lastFrame = Date.now()
+      connectingAt = Date.now()
+      ws.onopen = () => {
+        if (socket !== ws) return
+        connectingAt = 0
+        // 握手可能吃掉大半截看门狗窗口：连上的这一刻重新起算，给首帧完整的 15 秒。
+        lastFrame = Date.now()
+      }
       ws.onmessage = (event) => {
         // 重连换代之后，旧连接迟到的帧不算数。
         if (socket !== ws) return
@@ -276,6 +350,17 @@ export function useNodes() {
     const checkStale = () => {
       if (disposed || !visible) return
       if (typeof WebSocket === "undefined") return
+      // ★握手也可能卡住（2026-10-20 审出）：代理接了 TCP、却不完成 WS 升级时，
+      //   readyState 会长期停在 CONNECTING —— 下面那条 OPEN 判据永远不进，页面只有挂载时
+      //   那一次 fetchOnce 的数据，之后既不更新也不报错。给握手一个独立上限。
+      if (socket?.readyState === WebSocket.CONNECTING) {
+        if (Date.now() - connectingAt <= CONNECT_MS) return
+        const dead = socket
+        try { dead.close() } catch { /* 无所谓 */ }
+        socket = null
+        startFallback()
+        return
+      }
       if (!socket || socket.readyState !== WebSocket.OPEN) return
       if (Date.now() - lastFrame <= STALE_MS) return
       // 关掉它 —— 但**不指望 onclose**：对面若是「接受升级之后装死」的代理，close 握手同样等不到

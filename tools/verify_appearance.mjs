@@ -92,7 +92,7 @@ async function probe() {
       const fill = bar.firstElementChild
       if (!fill) return null
       const cardEff = paint(bodyRaw, getComputedStyle(card).backgroundColor).rgb
-      const text = card.querySelector('h3')
+      const text = card.querySelector('h2')
       const fillRaw = getComputedStyle(fill).backgroundColor
       const fillRgb = paint(cardEff, fillRaw).rgb
       // 别在这段（模板串）里写正则：模板转义会吃掉一层反斜杠，匹配不上还是小事，
@@ -186,11 +186,11 @@ check('访客没记过 → 回到跟系统（亮）', s.dark === false && !('the
 
 console.log('\n=== 顶栏那枚图标：点一下切换并记下；点回与系统一致＝删记录 ===')
 s = await load({ systemDark: false, visitor: null })
-await js(`document.querySelector('button[title="切换主题"]')?.click()`)
+await js(`document.querySelector('button[data-theme-toggle]')?.click()`)
 await sleep(400)
 let a = await probe()
 check('点一下（系统亮）→ 页面切暗、记录 theme=dark', a.dark === true && a.ls.theme === 'dark', `dark=${a.dark} ls=${JSON.stringify(a.ls)}`)
-await js(`document.querySelector('button[title="切换主题"]')?.click()`)
+await js(`document.querySelector('button[data-theme-toggle]')?.click()`)
 await sleep(400)
 a = await probe()
 check('再点一下（回到与系统一致）→ 记录被删、页面变亮', a.dark === false && !('theme' in a.ls), `dark=${a.dark} ls=${JSON.stringify(a.ls)}`)

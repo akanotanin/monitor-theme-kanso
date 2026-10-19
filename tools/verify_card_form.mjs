@@ -149,12 +149,13 @@ const probe = `(() => {
     const traffic = [...c.querySelectorAll('div')].find((d) => d.children.length === 2 && /流量重置/.test(d.textContent))
     const bars = [...c.querySelectorAll('div.overflow-hidden.rounded-full')]
     return {
-      name: c.querySelector('h3').textContent,
+      name: c.querySelector('h2')?.textContent ?? '(没名字)',
       box: box(c),
       status: c.dataset.status ?? null,
       dotInside,
-      // 身份行的第一个孩子应当是**旗子**（点去掉后不该有别的东西顶在最前）
-      rowFirst: c.firstElementChild?.firstElementChild?.tagName.toLowerCase() ?? null,
+      // 身份行的第一个孩子应当是**旗子**（点去掉后不该有别的东西顶在最前）。
+      // 卡片根的第一个孩子现在是铺满卡片的透明链接，所以从 h2 的父行取第一枚。
+      rowFirst: c.querySelector('h2')?.parentElement?.firstElementChild?.tagName.toLowerCase() ?? null,
       badge: (() => { const b = [...c.querySelectorAll('[data-slot="badge"]')].find((x) => x.textContent.trim() === '已离线'); return b ? { text: b.textContent.trim(), color: paint(b, getComputedStyle(c).backgroundColor) } : null })(),
       meta: c.querySelector('p')?.textContent ?? null,
       cells,
@@ -319,6 +320,55 @@ check('手机上四个读数都没被截（scrollWidth ≤ clientWidth）',
 check('390 宽上页面没有横向溢出',
   (await js('document.documentElement.scrollWidth <= document.documentElement.clientWidth')) === true,
   `${await js('document.documentElement.scrollWidth')} vs ${await js('document.documentElement.clientWidth')}`)
+
+// ⑨ 整卡可点的语义（2026-10-20）：卡根不再是 role=button；语义链接收在标题里，卡根 onClick
+//    兜住其余区域。这条同时钉住三件事：鼠标点卡片中心能进详情、键盘 Enter 能进、卡内 title 悬停
+//    没有被覆盖层挡住（复审出的回归）。
+await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1600, deviceScaleFactor: 1, mobile: false })
+await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` })
+for (let i = 0; i < 60; i++) { await sleep(200); if (await js(`document.querySelectorAll('[data-node-card]').length === 6`)) break }
+await sleep(500)
+{
+  const target = JSON.parse(await js(`(() => {
+    const c = document.querySelector('[data-node-card]')
+    const a = c.querySelector('h2 a[href^="/node/"]')
+    const r = c.getBoundingClientRect()
+    const ar = a?.getBoundingClientRect()
+    const hitAt = (x, y) => { const h = document.elementFromPoint(x, y); return !!h && !!a && (h === a || a.contains(h)) }
+    const tip = c.querySelector('[data-metrics] [title]') ?? c.querySelector('[title]')
+    const tr = tip?.getBoundingClientRect()
+    const hit = tr ? document.elementFromPoint(tr.x + tr.width / 2, tr.y + tr.height / 2) : null
+    return JSON.stringify({
+      id: c.getAttribute('data-node-card'), name: c.querySelector('h2')?.textContent ?? '',
+      href: a?.getAttribute('href') ?? null, role: c.getAttribute('role'),
+      linkHit: !!ar && hitAt(ar.x + ar.width / 2, ar.y - 2) && hitAt(ar.x + ar.width / 2, ar.bottom + 2),
+      tip: !!tip && !!hit && (hit === tip || tip.contains(hit)),
+      top: document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.tagName ?? '',
+      x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2),
+    })
+  })()`))
+  check('★ 整卡可点用链接语义：卡根无 role、标题里有 /node/id 链接、读完 title 可悬停、链接命中区 ≥24',
+    target.role === null && target.href === `/node/${target.id}` && target.tip && target.linkHit,
+    JSON.stringify(target))
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: target.x, y: target.y, button: 'left', clickCount: 1 })
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: target.x, y: target.y, button: 'left', clickCount: 1 })
+  for (let i = 0; i < 30; i++) { await sleep(200); if ((await js('location.pathname')) !== '/') break }
+  // 详情页是懒加载的：路径一变就先出骨架，节点名要等 NodeDetail 那块 chunk 到了才有。
+  let detailName = ''
+  for (let i = 0; i < 40; i++) { await sleep(200); detailName = await js(`document.querySelector('main h2')?.textContent ?? ''`); if (detailName) break }
+  const path = await js('location.pathname')
+  check('★ 点卡片中心 → /node/{id}，详情页标题是同一台',
+    path === `/node/${target.id}` && detailName === target.name, `${path} / ${detailName}`)
+
+  await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` })
+  for (let i = 0; i < 60; i++) { await sleep(200); if (await js(`document.querySelectorAll('[data-node-card]').length === 6`)) break }
+  await js(`document.querySelector('[data-node-card] h2 a').focus()`)
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 })
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 })
+  for (let i = 0; i < 30; i++) { await sleep(200); if ((await js('location.pathname')) !== '/') break }
+  check('★ 键盘：链接拿到焦点后按 Enter 也能进详情',
+    (await js('location.pathname')) === `/node/${target.id}`, await js('location.pathname'))
+}
 
 check('没有控制台异常', errors.length === 0, errors.slice(0, 2).join(' | '))
 

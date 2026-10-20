@@ -2,7 +2,7 @@
   "name": "kanso",
   "short": "kanso",
   "description": "读数、流量与价格一眼看全；详情页的图表可交互，连 TCP / UDP 连接数都有曲线。",
-  "version": "1.7.3",
+  "version": "1.7.4",
   "author": "akanotanin",
   "url": "https://github.com/akanotanin/monitor-theme-kanso"
 }

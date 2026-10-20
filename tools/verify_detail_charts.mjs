@@ -359,16 +359,45 @@ check('卡片始终夹在绘图区里（上下都没越界）',
 check('没有控制台异常', errors.length === 0, errors.slice(0, 2).join(' | '))
 
 // ── 信息项：连接数（TCP / UDP **合成一格**，2026-10-15 站长要求；写法照「内存 / 硬盘」）
-//    与次序（★2026-10-16 站长要求：系统 → 架构 → TCP / UDP 连接打头，三格是机器的「身份」）──
+//    与次序（★2026-10-16 站长要求：系统 → 架构 → TCP / UDP 连接打头，三格是机器的「身份」；
+//    ★2026-10-20 晚：TCP / UDP 连接 与 进程 互换 —— 身份三格＝系统 → 架构 → 进程，
+//    连接数落到容量之后；标签同日退回「系统」「架构」，内核 / 虚拟化只在值里）──
 {
   const facts = JSON.parse(await js(`JSON.stringify(Object.fromEntries([...document.querySelectorAll('dt')].map((d) => [d.textContent.trim(), d.nextElementSibling ? d.nextElementSibling.textContent.trim() : null])))`) ?? '{}')
-  // 离线机器 metrics 为 null、连接数那格隐身（真实页也是 6 格），这时只要求前两格。
+  // 离线机器 metrics 为 null、进程与连接数两格都隐身（真实页也只剩 7 格），这时只要求前两格。
   {
     const labels = JSON.parse(await js(`JSON.stringify([...document.querySelectorAll('dt')].map((d) => d.textContent.trim()))`) ?? '[]')
-    const want = facts['TCP / UDP 连接'] === undefined ? ['系统', '架构'] : ['系统', '架构', 'TCP / UDP 连接']
-    check('★ 信息项次序：前三格＝系统 → 架构 →（有连接数时）TCP / UDP 连接',
+    const want = facts['进程'] === undefined
+      ? ['系统', '架构']
+      : ['系统', '架构', '进程']
+    check('★ 信息项次序：前三格＝系统 → 架构 →（有进程数时）进程',
       want.every((l, i) => labels[i] === l),
       JSON.stringify(labels.slice(0, 4)))
+  }
+  // ★2026-10-20 站长要求：内存 / 交换分区 一格、硬盘紧随其后单列、进程单列；
+  //   形状判据真站也适用（真数据值不同，但形状一样）；夹具值另断一条。
+  {
+    const labels = JSON.parse(await js(`JSON.stringify([...document.querySelectorAll('dt')].map((d) => d.textContent.trim()))`) ?? '[]')
+    const mem = facts['内存 / 交换分区'] ?? ''
+    const disk = facts['硬盘'] ?? ''
+    const procs = facts['进程'] ?? ''
+    /** 相邻判据：任一方隐身时不判（离线机器那两格本来就不在）。 */
+    const next = (a, b) => {
+      const i = labels.indexOf(a), j = labels.indexOf(b)
+      return i === -1 || j === -1 || j === i + 1
+    }
+    check('★ 容量两格相邻（内存 / 交换分区 → 硬盘），进程跟「架构」、连接数跟硬盘',
+      /^[\d.]+ [KMGT]?B \/ (?:[\d.]+ [KMGT]?B|—)$/.test(mem) && /^[\d.]+ [KMGT]?B$/.test(disk) && /^\d+$/.test(procs) &&
+        next('内存 / 交换分区', '硬盘') &&
+        next('架构', '进程') &&
+        next('硬盘', 'TCP / UDP 连接') &&
+        facts['内存 / 硬盘'] === undefined,
+      JSON.stringify({ 内存: mem, 硬盘: disk, 进程: procs, labels: labels.slice(0, 9) }))
+    if (!REAL && !UPSTREAM) {
+      check('夹具值：内存 / 交换分区 = 2.00 GB / 0 B、硬盘 = 40.0 GB、进程 = 75',
+        mem === '2.00 GB / 0 B' && disk === '40.0 GB' && procs === '75',
+        JSON.stringify({ 内存: mem, 硬盘: disk, 进程: procs }))
+    }
   }
   // ★（2026-10-16 审出）「16 / 3」是夹具的值：真站（REAL）与上游模式（UPSTREAM）都只断形状，
   //   原来只挡了 REAL，UPSTREAM 会拿真数据撞夹具值假红。

@@ -45,10 +45,13 @@ const NodeDetail = lazy(loadDetail)
  * ★两处「差一块就差几十 px」的地方（都踩过，护栏 verify_detail_preload 会照出来）：
  *   ① **五张图是页签块的兄弟、不是孩子** —— 嵌进去的话，页签与图之间那 16px 变成 8px，
  *      整页少 8px；（2026-10-06 修）
- *   ② **TCP / UDP 连接那一格**（2026-10-15 修）—— 详情页 2026-10-14 加了连接数、2026-10-15
- *      合成一格（真实页 7 格），骨架还画 6 格：桌面三列多出一行（+48px）、手机一列多出两行（+96px）。
- *      判法与真实页同源（那边 `const m = node.metrics`）：`metrics` 在才画这一格（离线机器它隐身、
- *      真实页也是 6 格），所以由调用方按 `node.metrics` 传入。
+ *   ② **规格格数与真实页同源**（2026-10-15 修 TCP / UDP 连接那格；2026-10-20 再改一轮）——
+ *      真实页现在：**有 metrics 时 9 格**（系统、架构、进程、CPU、内存 / 交换分区、硬盘、
+ *      TCP / UDP 连接、今日流量、在线时间），**metrics 缺时 7 格**（连接数与进程隐身）。
+ *      骨架必须摆同样的格数：桌面三列时 7 格与 9 格都是三行、看不出差；手机一列就差两行（96px），
+ *      verify_detail_preload 的手机档会照出来。
+ *      判法与真实页同源（那边 `const m = node.metrics`）：`metrics` 在才画那两格（离线机器它们隐身、
+ *      真实页也是 7 格），所以由调用方按 `node.metrics` 传入。
  *
  * （2026-10-16：详情页删了备注块——备注只显示在卡片上——骨架里那一块也一并撤掉。）
  */
@@ -60,7 +63,7 @@ function DetailSkeleton({ hasConnections = false }: { hasConnections?: boolean }
         <Skeleton className="h-7 w-44" />
       </div>
       <div className="grid gap-x-6 gap-y-3 md:grid-cols-2 lg:grid-cols-3">
-        {(hasConnections ? [0, 1, 2, 3, 4, 5, 6] : [0, 1, 2, 3, 4, 5]).map((i) => (
+        {(hasConnections ? [0, 1, 2, 3, 4, 5, 6, 7, 8] : [0, 1, 2, 3, 4, 5, 6]).map((i) => (
           <div key={i} className="min-w-0">
             <Skeleton className="h-4 w-12" />
             <Skeleton className="h-5 w-28" />

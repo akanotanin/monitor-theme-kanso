@@ -67,6 +67,17 @@ const nodes = [
     traffic_limit: 0, traffic_mode: 'sum', traffic_reset_day: 1,
     month_start: '', total_rx: 0, total_tx: 0, month_rx: 0, month_tx: 0, day_rx: 0, day_tx: 0,
   },
+  // ④ 交换分区未知（老 hub：顶层与 metrics 都没有 swap_total）：那一格写「—」，
+  //    不许把「不知道」写成「0 B」（0 B 是「没有交换分区」）。
+  {
+    id: 4, name: '旧集四号', sort: 4, public: true, online: true, country: 'SG',
+    last_seen: now - 3, last_seen_ago: 3, metrics: metrics({ swap_total: null, swap_used: null }),
+    os: 'Debian GNU/Linux 12', kernel: '6.1.0-30-amd64', arch: 'x86_64', virt: 'none',
+    cpu_name: 'AMD EPYC', cpu_cores: 4, mem_total: 2 * GB, disk_total: 40 * GB,
+    agent_version: '1.4.0', price: 0, currency: 'CNY', billing_cycle: 'monthly', expires_at: null, expires_in: null,
+    traffic_limit: 0, traffic_mode: 'sum', traffic_reset_day: 1,
+    month_start: '', total_rx: 0, total_tx: 0, month_rx: 0, month_tx: 0, day_rx: 0, day_tx: 0,
+  },
 ]
 
 // 历史指标：240 点、6 分钟一桶（一天）。内存 ~700MB —— 顶层是 0 时，只有取 metrics 才画得出来。
@@ -176,7 +187,7 @@ const cards = JSON.parse(await js(`(() => {
 })()`) ?? '[]')
 const byId = (n) => cards.find((c) => c.id === String(n))
 const one = byId(1), drifted = byId(2), never = byId(3)
-check('三张卡片都在（页面没进错误边界）', cards.length === 3, cards.map((c) => `${c.id}:${c.aria}`).join(' / '))
+check('四张卡片都在（页面没进错误边界）', cards.length === 4, cards.map((c) => `${c.id}:${c.aria}`).join(' / '))
 check('★ 顶层规格缺失那台：照常画读数区（不写「还没有接入」）', one?.metrics === true && !/还没有接入/.test(one.text), `metrics=${one?.metrics}`)
 check('★ 规格 / 累计取实时读数：累计 1000 B（rx）/ 1.95 KB（tx）、已用 1.07 KB', /累计 1000 B/.test(one?.text ?? '') && /累计 1\.95 KB/.test(one?.text ?? '') && /1\.07 KB \/ 500 GB/.test(one?.text ?? ''), one?.text?.replace(/\n/g, ' | ').slice(0, 160))
 check('★ 重置日缺失写「—」而不是「每月 undefined 日」', /流量重置：—/.test(one?.text ?? ''), one?.text?.match(/流量重置：\S+/)?.[0])
@@ -199,7 +210,9 @@ const retryBtn = await js(`[...document.querySelectorAll('button')].some((b) => 
 check('★ 错误面板里有「重试」按钮（不是只有一句错误话术）', retryBtn === true, String(retryBtn))
 const facts = JSON.parse(await js(`JSON.stringify([...document.querySelectorAll('dl > div')].map((d) => d.innerText.replace(/\\n/g, ' / ')))`) ?? '[]')
 const factText = facts.join(' ｜ ')
-check('★ 内存 / 硬盘取实时读数（2.00 GB / 40.0 GB，不是 0 B / 0 B）', /2\.00 GB \/ 40\.0 GB/.test(factText), factText)
+check('★ 内存 / 交换分区取实时读数（2.00 GB / 0 B，不是 0 B / 0 B）', /内存 \/ 交换分区 \/ 2\.00 GB \/ 0 B/.test(factText), factText)
+check('★ 硬盘单列、取实时读数（40.0 GB）', /硬盘 \/ 40\.0 GB/.test(factText), factText)
+check('★ 进程单列（75）', /进程 \/ 75/.test(factText), factText)
 check('★ CPU 格只有型号、没有「× undefined」', facts.some((f) => /^CPU \/ AMD EPYC$/.test(f)), facts.find((f) => f.startsWith('CPU')))
 check('TCP / UDP 连接那格取实时读数（51 / 12）', /51 \/ 12/.test(factText), '')
 check('详情页文本里没有 undefined / NaN', !/undefined|NaN/.test(await js('document.querySelector("main").innerText') ?? ''), '')
@@ -232,6 +245,19 @@ check('★ 不摆「↓ 0 B」', !/↓ 0 B/.test(neverText), '')
 check('★ 不摆「0 核」（CPU 格整格隐身）', !/0 核|undefined/.test(neverText), '')
 check('在线时间那格仍是「未接入」', /未接入/.test(neverText), '')
 check('C 组控制台无异常', errors.length === 0, errors.slice(0, 2).join(' | ').slice(0, 200))
+
+/* ---------------------------------------------------------------- D. 交换分区未知：写「—」不写 0 B */
+console.log('\n=== D、交换分区未知（老 hub 两处都没有 swap_total）：写「—」 ===')
+await send('Page.navigate', { url: `${BASE}/node/4` })
+await waitFor(`document.querySelector('main dl') !== null`, 15000)
+await sleep(500)
+const oldFacts = JSON.parse(await js(`JSON.stringify(Object.fromEntries([...document.querySelectorAll('dt')].map((d) => [d.textContent.trim(), d.nextElementSibling ? d.nextElementSibling.textContent.trim() : null])))`) ?? '{}')
+check('★ 交换分区未知写「—」（2.00 GB / —），不冒充 0 B',
+  oldFacts['内存 / 交换分区'] === '2.00 GB / —', JSON.stringify(oldFacts['内存 / 交换分区']))
+check('★ 硬盘照样单列（40.0 GB）', oldFacts['硬盘'] === '40.0 GB', String(oldFacts['硬盘']))
+check('★ 虚拟化为 none 时「架构」只写架构，不留一个空尾巴',
+  oldFacts['架构'] === 'x86_64', String(oldFacts['架构']))
+check('D 组控制台无异常', errors.length === 0, errors.slice(0, 2).join(' | ').slice(0, 200))
 
 console.log(`\n结果: PASS ${pass} / FAIL ${fail}`)
 ws.close(); chrome.kill(); server.close()

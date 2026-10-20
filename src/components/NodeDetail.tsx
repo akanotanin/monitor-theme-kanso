@@ -273,6 +273,10 @@ export function NodeDetail({ node, historyDays }: {
   //   值就在那儿（卡片侧的口径本来就是读 metrics 的）。
   const memTotal = m?.mem_total ?? node.mem_total ?? 0
   const diskTotal = m?.disk_total ?? node.disk_total ?? 0
+  // ★2026-10-20 站长要求信息格拆出「内存 / 交换分区」：交换分区总量与内存同一口径（实时读数
+  //   优先，其次顶层）。metrics 里没有 swap_total（老 hub 缺键 → safeNodes 归一成 null）时记 null，
+  //   由那一格写成「—」——0 B 是「没有交换分区」，与「不知道」不是一回事。
+  const swapTotal = m?.swap_total ?? (typeof node.swap_total === "number" ? node.swap_total : null)
   // One series per probe that reported, labelled from the names the samples
   // arrived with. Memoised, as are the two below: the node prop changes every few
   // seconds as live metrics arrive, and rebuilding the chart's data array on those
@@ -404,24 +408,34 @@ export function NodeDetail({ node, historyDays }: {
           just a box. Three across at lg, two at md, one on a phone -- a kernel
           version or a CPU model needs about 270px to stay whole.
           ★2026-10-16 站长定的次序：系统 → 架构 → TCP / UDP 连接打头（一台机器的「身份」），
-            再是 CPU / 内存 / 今日流量，在线时间收尾。 */}
+            再是 CPU / 内存 / 今日流量，在线时间收尾。
+          ★2026-10-20 站长改了两轮，最终九格三行：身份（系统 → 架构 → 进程）、
+            容量（CPU → 内存 / 交换分区 → 硬盘）、动态（TCP / UDP 连接 → 今日流量 → 在线时间）。
+            相较上一版：容量拆成「内存 / 交换分区」与「硬盘」两格、进程从「架构」格单列、
+            连接数与进程互换位置；标签只留「系统」「架构」（内核版本与虚拟化类型本来就在值里、
+            用 · 分隔），「/」只留给真正并列的两项（内存 / 交换分区、TCP / UDP 连接）。 */}
       <dl className="grid gap-x-6 gap-y-3 md:grid-cols-2 lg:grid-cols-3">
         <Fact label="系统" value={[osName(node.os), node.kernel].filter(Boolean).join(" · ")} />
         <Fact
           label="架构"
-          value={[node.arch, node.virt !== "none" ? node.virt : "", m && m.procs !== null ? `${m.procs} 进程` : ""]
-            .filter(Boolean)
-            .join(" · ")}
+          value={[node.arch, node.virt !== "none" ? node.virt : ""].filter(Boolean).join(" · ")}
         />
+        <Fact label="进程" value={m && m.procs !== null ? m.procs : null} />
+        <Fact label="CPU" value={cpuLine(node)} />
+        {/* ★2026-10-20 站长要求：内存与交换分区合成一格（沿用旧「内存 / 硬盘」那格的写法），
+            硬盘各占一格。容量为 0（从未接入、或顶层缺失又没读数）= 整格隐身，
+            不摆一格「0 B / 0 B」；交换分区总量未知时写「—」（见上面 swapTotal）。 */}
+        <Fact
+          label="内存 / 交换分区"
+          value={memTotal > 0 ? `${bytes(memTotal)} / ${swapTotal === null ? "—" : bytes(swapTotal)}` : null}
+        />
+        <Fact label="硬盘" value={diskTotal > 0 ? bytes(diskTotal) : null} />
         {/* 连接数：hub 的实时上报里带着 TCP / UDP 连接条数（`metrics.tcp / udp`）。
             ★2026-10-15 站长要求合成**一格**、写法照「内存 / 硬盘」那格：标签 `TCP / UDP 连接`、
             值 `17 / 3`。离线机器 `metrics` 是 null，这一格随 Fact 的既有口径一起隐身
             ——「没有这个值」本来就不该占格子。 */}
         {/* 连接数只在这一帧真的带着两个数时出现（老 hub / 形状漂移都是 null）。 */}
         <Fact label="TCP / UDP 连接" value={m && m.tcp !== null && m.udp !== null ? `${m.tcp} / ${m.udp}` : null} />
-        <Fact label="CPU" value={cpuLine(node)} />
-        {/* 两个容量都是 0（从未接入、或顶层缺失又没读数）= 整格隐身，不摆一格「0 B / 0 B」。 */}
-        <Fact label="内存 / 硬盘" value={memTotal > 0 || diskTotal > 0 ? `${bytes(memTotal)} / ${bytes(diskTotal)}` : null} />
         <Fact label="今日流量" value={node.day_rx || node.day_tx || m ? `↓ ${bytes(node.day_rx)} · ↑ ${bytes(node.day_tx)}` : null} />
         {/* 最后一格是「在线时间」：取代原先标题行上那枚状态徽章。它顶掉的是「续费」
             那一格——公开页的访客关心这台机器还活着多久，价格与到期在后台看。 */}

@@ -175,13 +175,17 @@ function cpuLine(node: Node): string {
   return name || (cores > 0 ? `${cores} 核` : "")
 }
 
-function Fact({ label, value }: { label: string; value?: string | number | null }) {
+/**
+ * 一格信息项。`title` 只在需要比显示值更多的说明时传（例如「负载」那一格的三条均值）；
+ * 不传就退回值本身 —— 值都被 `truncate` 截断了（手机上 CPU 型号 / 内核名最先被截），
+ * 悬停至少要能看到全文。
+ */
+function Fact({ label, value, title }: { label: string; value?: string | number | null; title?: string }) {
   if (value === null || value === undefined || value === "") return null
   return (
     <div className="min-w-0">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      {/* title：值都被 `truncate` 截断了（手机上 CPU 型号 / 内核名最先被截），悬停至少要能看到全文。 */}
-      <dd className="truncate text-sm" title={typeof value === "string" ? value : undefined}>{value}</dd>
+      <dd className="truncate text-sm" title={title ?? (typeof value === "string" ? value : undefined)}>{value}</dd>
     </div>
   )
 }
@@ -409,18 +413,26 @@ export function NodeDetail({ node, historyDays }: {
           version or a CPU model needs about 270px to stay whole.
           ★2026-10-16 站长定的次序：系统 → 架构 → TCP / UDP 连接打头（一台机器的「身份」），
             再是 CPU / 内存 / 今日流量，在线时间收尾。
-          ★2026-10-20 站长改了两轮，最终九格三行：身份（系统 → 架构 → 进程）、
+          ★2026-10-20 站长改了三轮，最终九格三行：身份（系统 → 架构 → 负载）、
             容量（CPU → 内存 / 交换分区 → 硬盘）、动态（TCP / UDP 连接 → 今日流量 → 在线时间）。
-            相较上一版：容量拆成「内存 / 交换分区」与「硬盘」两格、进程从「架构」格单列、
-            连接数与进程互换位置；标签只留「系统」「架构」（内核版本与虚拟化类型本来就在值里、
+            相较上一版：进程并回「架构」格（值里写「… · 75 进程」）、空出来的那一格放「负载」
+            （卡片上撤掉的负载在这一页留个位置，值是 1 分钟均值、三条均值在悬停里）；标签只留「系统」「架构」（内核版本与虚拟化类型本来就在值里、
             用 · 分隔），「/」只留给真正并列的两项（内存 / 交换分区、TCP / UDP 连接）。 */}
       <dl className="grid gap-x-6 gap-y-3 md:grid-cols-2 lg:grid-cols-3">
         <Fact label="系统" value={[osName(node.os), node.kernel].filter(Boolean).join(" · ")} />
         <Fact
           label="架构"
-          value={[node.arch, node.virt !== "none" ? node.virt : ""].filter(Boolean).join(" · ")}
+          value={[node.arch, node.virt !== "none" ? node.virt : "", m && typeof m.procs === "number" && m.procs > 0 ? `${m.procs} 进程` : ""]
+            .filter(Boolean)
+            .join(" · ")}
         />
-        <Fact label="进程" value={m && m.procs !== null ? m.procs : null} />
+        {/* ★2026-10-20 第三轮站长要求：进程并回「架构」格（1.7.3 的写法），空出来的这格放「负载」——
+            卡片上撤掉的负载在详情页留一个位置。值只看 1 分钟均值（与卡片同一口径），三条均值在悬停里。 */}
+        <Fact
+          label="负载"
+          value={m ? m.load[0].toFixed(2) : null}
+          title={m ? `1 / 5 / 15 分钟：${m.load.map((n) => n.toFixed(2)).join(" ")}` : undefined}
+        />
         <Fact label="CPU" value={cpuLine(node)} />
         {/* ★2026-10-20 站长要求：内存与交换分区合成一格（沿用旧「内存 / 硬盘」那格的写法），
             硬盘各占一格。容量为 0（从未接入、或顶层缺失又没读数）= 整格隐身，

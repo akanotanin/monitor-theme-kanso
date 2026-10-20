@@ -46,7 +46,7 @@ const node = (id, name, group, country, os) => ({
   currency: 'CNY', price: 349, expires_at: '2027-07-21', expires_in: 299, month_start: '2026-09-21',
   traffic_reset_day: 21, day_rx: 2140585887, day_tx: 2191393745, month_rx: 4650258264, month_tx: 4351673970,
   total_rx: 5707805336, total_tx: 5203609923,
-  metrics: { cpu: 13, load: [0, 0, 0], mem_used: 431800320, mem_total: 2147483648, swap_used: 0, swap_total: 0, disk_used: 1524510720, disk_total: 42949672960, net_rx: 867, net_tx: 465, procs: 75, tcp: 16, udp: 3, uptime: 318521, month_rx: 4650258264, month_tx: 4351673970, total_rx: 5707805336, total_tx: 5203609923 },
+  metrics: { cpu: 13, load: [0.4, 0.3, 0.2], mem_used: 431800320, mem_total: 2147483648, swap_used: 0, swap_total: 0, disk_used: 1524510720, disk_total: 42949672960, net_rx: 867, net_tx: 465, procs: 75, tcp: 16, udp: 3, uptime: 318521, month_rx: 4650258264, month_tx: 4351673970, total_rx: 5707805336, total_tx: 5203609923 },
 })
 const NODES = { nodes: [node(1, '东京一号', '东京', 'JP', 'Debian GNU/Linux 12 (bookworm)')] }
 const START = 1790300000
@@ -360,44 +360,54 @@ check('没有控制台异常', errors.length === 0, errors.slice(0, 2).join(' | 
 
 // ── 信息项：连接数（TCP / UDP **合成一格**，2026-10-15 站长要求；写法照「内存 / 硬盘」）
 //    与次序（★2026-10-16 站长要求：系统 → 架构 → TCP / UDP 连接打头，三格是机器的「身份」；
-//    ★2026-10-20 晚：TCP / UDP 连接 与 进程 互换 —— 身份三格＝系统 → 架构 → 进程，
-//    连接数落到容量之后；标签同日退回「系统」「架构」，内核 / 虚拟化只在值里）──
+//    ★2026-10-20 三轮：进程并回「架构」格（值尾写「75 进程」），身份三格＝系统 → 架构 → 负载，
+//    连接数落到容量之后；标签只留「系统」「架构」，内核 / 虚拟化 / 进程都在值里）──
 {
   const facts = JSON.parse(await js(`JSON.stringify(Object.fromEntries([...document.querySelectorAll('dt')].map((d) => [d.textContent.trim(), d.nextElementSibling ? d.nextElementSibling.textContent.trim() : null])))`) ?? '{}')
-  // 离线机器 metrics 为 null、进程与连接数两格都隐身（真实页也只剩 7 格），这时只要求前两格。
+  // 离线机器 metrics 为 null、负载与连接数两格都隐身（真实页也只剩 7 格），这时只要求前两格。
   {
     const labels = JSON.parse(await js(`JSON.stringify([...document.querySelectorAll('dt')].map((d) => d.textContent.trim()))`) ?? '[]')
-    const want = facts['进程'] === undefined
-      ? ['系统', '架构']
-      : ['系统', '架构', '进程']
-    check('★ 信息项次序：前三格＝系统 → 架构 →（有进程数时）进程',
+    // 这一页跑的是有 metrics 的节点：期望写死三格（从 facts 里推期望值会让「负载格被删掉」自证通过）。
+    const want = ['系统', '架构', '负载']
+    check('★ 信息项次序：前三格＝系统 → 架构 → 负载',
       want.every((l, i) => labels[i] === l),
       JSON.stringify(labels.slice(0, 4)))
   }
-  // ★2026-10-20 站长要求：内存 / 交换分区 一格、硬盘紧随其后单列、进程单列；
+  // ★2026-10-20 三轮：内存 / 交换分区 一格、硬盘紧随其后单列；进程回「架构」、独立「进程」格改「负载」。
   //   形状判据真站也适用（真数据值不同，但形状一样）；夹具值另断一条。
   {
     const labels = JSON.parse(await js(`JSON.stringify([...document.querySelectorAll('dt')].map((d) => d.textContent.trim()))`) ?? '[]')
     const mem = facts['内存 / 交换分区'] ?? ''
     const disk = facts['硬盘'] ?? ''
-    const procs = facts['进程'] ?? ''
+    const arch = facts['架构'] ?? ''
+    const live = facts['负载'] !== undefined
     /** 相邻判据：任一方隐身时不判（离线机器那两格本来就不在）。 */
     const next = (a, b) => {
       const i = labels.indexOf(a), j = labels.indexOf(b)
       return i === -1 || j === -1 || j === i + 1
     }
-    check('★ 容量两格相邻（内存 / 交换分区 → 硬盘），进程跟「架构」、连接数跟硬盘',
-      /^[\d.]+ [KMGT]?B \/ (?:[\d.]+ [KMGT]?B|—)$/.test(mem) && /^[\d.]+ [KMGT]?B$/.test(disk) && /^\d+$/.test(procs) &&
+    check('★ 容量两格相邻（内存 / 交换分区 → 硬盘）、连接数跟硬盘；进程并回「架构」、独立「进程」格已撤',
+      /^[\d.]+ [KMGT]?B \/ (?:[\d.]+ [KMGT]?B|—)$/.test(mem) && /^[\d.]+ [KMGT]?B$/.test(disk) &&
+        live && /· \d+ 进程$/.test(arch) && facts['进程'] === undefined &&
         next('内存 / 交换分区', '硬盘') &&
-        next('架构', '进程') &&
         next('硬盘', 'TCP / UDP 连接') &&
         facts['内存 / 硬盘'] === undefined,
-      JSON.stringify({ 内存: mem, 硬盘: disk, 进程: procs, labels: labels.slice(0, 9) }))
+      JSON.stringify({ 内存: mem, 硬盘: disk, 架构: arch, labels: labels.slice(0, 9) }))
     if (!REAL && !UPSTREAM) {
-      check('夹具值：内存 / 交换分区 = 2.00 GB / 0 B、硬盘 = 40.0 GB、进程 = 75',
-        mem === '2.00 GB / 0 B' && disk === '40.0 GB' && procs === '75',
-        JSON.stringify({ 内存: mem, 硬盘: disk, 进程: procs }))
+      check('夹具值：内存 / 交换分区 = 2.00 GB / 0 B、硬盘 = 40.0 GB、架构带 75 进程、负载 0.40',
+        mem === '2.00 GB / 0 B' && disk === '40.0 GB' && /75 进程$/.test(arch) && facts['负载'] === '0.40',
+        JSON.stringify({ 内存: mem, 硬盘: disk, 架构: arch, 负载: facts['负载'] }))
     }
+  }
+  {
+    const loadTitle = await js(`(() => {
+      const d = [...document.querySelectorAll('dt')].find((x) => x.textContent.trim() === '负载')
+      return d?.nextElementSibling?.getAttribute('title') ?? null
+    })()`)
+    check('★ 负载格的悬停说明写 1 / 5 / 15 三条均值（不是只有 1 分钟那个数）',
+      /^1 \/ 5 \/ 15 分钟：[\d.]+ [\d.]+ [\d.]+$/.test(loadTitle ?? '') &&
+        (!REAL && !UPSTREAM ? loadTitle === '1 / 5 / 15 分钟：0.40 0.30 0.20' : true),
+      String(loadTitle))
   }
   // ★（2026-10-16 审出）「16 / 3」是夹具的值：真站（REAL）与上游模式（UPSTREAM）都只断形状，
   //   原来只挡了 REAL，UPSTREAM 会拿真数据撞夹具值假红。

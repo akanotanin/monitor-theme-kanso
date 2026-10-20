@@ -181,6 +181,8 @@ const cards = JSON.parse(await js(`(() => {
     link: !!c.querySelector('a[href^="/node/"]'),
     role: c.getAttribute('role'),
     text: c.innerText,
+    // 累计总量 2026-10-20 起在「网络」格的悬停说明里（卡片第三行第四格），不在 innerText。
+    net: c.querySelector('[data-net="cell"]')?.getAttribute('title') ?? '',
     metrics: !!c.querySelector('[data-metrics]'),
     badges: [...c.querySelectorAll('[data-slot=badge]')].map((b) => b.textContent.trim()),
   })))
@@ -189,8 +191,14 @@ const byId = (n) => cards.find((c) => c.id === String(n))
 const one = byId(1), drifted = byId(2), never = byId(3)
 check('四张卡片都在（页面没进错误边界）', cards.length === 4, cards.map((c) => `${c.id}:${c.aria}`).join(' / '))
 check('★ 顶层规格缺失那台：照常画读数区（不写「还没有接入」）', one?.metrics === true && !/还没有接入/.test(one.text), `metrics=${one?.metrics}`)
-check('★ 规格 / 累计取实时读数：累计 1000 B（rx）/ 1.95 KB（tx）、已用 1.07 KB', /累计 1000 B/.test(one?.text ?? '') && /累计 1\.95 KB/.test(one?.text ?? '') && /1\.07 KB \/ 500 GB/.test(one?.text ?? ''), one?.text?.replace(/\n/g, ' | ').slice(0, 160))
-check('★ 重置日缺失写「—」而不是「每月 undefined 日」', /流量重置：—/.test(one?.text ?? ''), one?.text?.match(/流量重置：\S+/)?.[0])
+check('★ 规格 / 累计取实时读数：累计 1000 B（rx）/ 1.95 KB（tx）、已用 1.07 KB',
+  /累计 1000 B/.test(one?.net ?? '') && /累计 1\.95 KB/.test(one?.net ?? '') && /1\.07 KB \/ 500 GB/.test(one?.text ?? ''),
+  `${one?.net} | ${one?.text?.replace(/\n/g, ' | ').slice(0, 120)}`)
+{
+  // 直接读「重置周期」那一格自己的文本（不再用跨行 `.*—` 的宽松正则 —— 任何一个「—」都能让它通过）。
+  const resetText = await js(`document.querySelector('[data-reset]')?.textContent?.trim() ?? null`)
+  check('★ 重置日缺失写「—」而不是「每月 undefined 日」', resetText === '—', String(resetText))
+}
 check('★ 卡片文本里没有 undefined / NaN', !/undefined|NaN/.test(one?.text ?? ''), '')
 check('漂移那台：country 归一成「没写」，没有旗子也没有 42 徽标', drifted?.badges.length === 0, JSON.stringify(drifted?.badges))
 check('漂移那台：备注是数字＝没写，一枚小卡片都不摊', !/备注/.test(drifted?.text ?? '') && drifted?.badges.length === 0, '')
@@ -212,7 +220,16 @@ const facts = JSON.parse(await js(`JSON.stringify([...document.querySelectorAll(
 const factText = facts.join(' ｜ ')
 check('★ 内存 / 交换分区取实时读数（2.00 GB / 0 B，不是 0 B / 0 B）', /内存 \/ 交换分区 \/ 2\.00 GB \/ 0 B/.test(factText), factText)
 check('★ 硬盘单列、取实时读数（40.0 GB）', /硬盘 \/ 40\.0 GB/.test(factText), factText)
-check('★ 进程单列（75）', /进程 \/ 75/.test(factText), factText)
+check('★ 进程并回「架构」格（x86_64 · kvm · 75 进程）', /架构 \/ x86_64 · kvm · 75 进程/.test(factText), factText)
+{
+  const loadTitle = await js(`(() => {
+    const d = [...document.querySelectorAll('dt')].find((x) => x.textContent.trim() === '负载')
+    return d?.nextElementSibling?.getAttribute('title') ?? null
+  })()`)
+  check('★ 空出来的一格是「负载」，1 分钟均值 0.40，三条均值在悬停说明里',
+    /负载 \/ 0\.40/.test(factText) && loadTitle === '1 / 5 / 15 分钟：0.40 0.30 0.20',
+    `${factText} ／ title=${loadTitle}`)
+}
 check('★ CPU 格只有型号、没有「× undefined」', facts.some((f) => /^CPU \/ AMD EPYC$/.test(f)), facts.find((f) => f.startsWith('CPU')))
 check('TCP / UDP 连接那格取实时读数（51 / 12）', /51 \/ 12/.test(factText), '')
 check('详情页文本里没有 undefined / NaN', !/undefined|NaN/.test(await js('document.querySelector("main").innerText') ?? ''), '')
@@ -255,8 +272,8 @@ const oldFacts = JSON.parse(await js(`JSON.stringify(Object.fromEntries([...docu
 check('★ 交换分区未知写「—」（2.00 GB / —），不冒充 0 B',
   oldFacts['内存 / 交换分区'] === '2.00 GB / —', JSON.stringify(oldFacts['内存 / 交换分区']))
 check('★ 硬盘照样单列（40.0 GB）', oldFacts['硬盘'] === '40.0 GB', String(oldFacts['硬盘']))
-check('★ 虚拟化为 none 时「架构」只写架构，不留一个空尾巴',
-  oldFacts['架构'] === 'x86_64', String(oldFacts['架构']))
+check('★ 虚拟化为 none 时「架构」不留空尾巴（x86_64 · 75 进程）',
+  oldFacts['架构'] === 'x86_64 · 75 进程', String(oldFacts['架构']))
 check('D 组控制台无异常', errors.length === 0, errors.slice(0, 2).join(' | ').slice(0, 200))
 
 console.log(`\n结果: PASS ${pass} / FAIL ${fail}`)

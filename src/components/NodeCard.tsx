@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Lock } from "lucide-react"
+import { ArrowDown, ArrowUp, ArrowUpDown, Lock, Repeat } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
@@ -56,10 +56,50 @@ export function offlineSeconds(node: Node): number {
  * 底注那一行最多摊几枚备注小卡片。底注只有一行：贪多就会把「价格 / 剩余」挤到看不见，
  * 而那个恰恰是访客问「这台还剩多久」时先找的那一句。
  */
-const CARD_CHIPS = 3
+// ★2026-10-20：卡片从 510 收到 336 之后一行塞不下三枚（三枚长备注会把「剩余 N 天」整个挤掉），
+//   收到两枚；README 的「关于备注」也跟着改成最多 2 枚。
+const CARD_CHIPS = 2
 
 /**
- * 这台机器此刻有没有实时数据（= 四个读数格写实时值；卡上没有状态点，见下面 ① 的说明）。
+ * 流量计费方式（hub 的 `traffic_mode`）→ 一枚 12px 的图标 + 悬停说明。
+ *
+ * ★2026-10-20 站长指出：原来那枚 `↕` 一直不变，看不出这台是按哪种方式计流量 ——
+ *   四种方式（上下行相加 / 取较大值 / 仅上行 / 仅下行）在卡面上长得一模一样。
+ *   现在四种方式各一枚 12px 线性图标：↕ 相加、≥ 取较大、↑ 仅上行、↓ 仅下行（同一支笔、同一线宽；
+ *   `≥` 是自绘的，线宽按 16 视口折成 1.4，显示出来与 lucide 的 2.0/24 视口等粗）；
+ *   老 hub 没有这个字段时按 `sum` 处理（与 monthUsage 的 default 同一口径）。
+ */
+const TRAFFIC_MODE_LABEL: Record<string, string> = {
+  sum: "上下行相加",
+  max: "取较大值",
+  up: "仅上行",
+  down: "仅下行",
+}
+
+function TrafficModeIcon({ mode }: { mode: string }) {
+  const cls = "size-3 shrink-0"
+  switch (mode) {
+    case "max":
+      // lucide 这套没有比较符号，`≥` 按同一支笔自己画：两条斜线 + 一条底横线。
+      return (
+        <svg viewBox="0 0 16 16" className={cls} fill="none" stroke="currentColor" strokeWidth={1.4}
+          strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M3 2.8 13 6.6 3 10.4" />
+          <path d="M3 13.4h10" />
+        </svg>
+      )
+    case "up":
+      return <ArrowUp className={cls} aria-hidden />
+    case "down":
+      return <ArrowDown className={cls} aria-hidden />
+    default:
+      // 上下行相加：回到最早那枚 lucide ArrowUpDown（站长说文本 `↑↓` 没它好看）。
+      return <ArrowUpDown className={cls} aria-hidden />
+  }
+}
+
+/**
+ * 这台机器此刻有没有实时数据（= 读数格写实时值；卡上没有状态点，见下面 ① 的说明）。
  * 与列表沉底是**同一判据**（`online && metrics`，见 App.tsx）：hub 对一个连上但还没上报的
  * agent 答的是 `online: true` + `metrics: null`，那时读数全是「—」，点不该是绿的。
  */
@@ -76,15 +116,6 @@ export function metaLine(node: Node): string {
     ? `运行时间 ${uptime(node.metrics.uptime)}`
     : node.online ? "在线" : deployed(node) ? "已离线" : "未接入"
   return [osName(node.os), state].filter(Boolean).join(" · ")
-}
-
-/**
- * 负载那一格的条：`load[0] / 核数` —— 1 核机上 0.20 的负载 = 20%（条读的是「满载的几成」，
- * 而不是把 1 分钟均值直接当百分比）。核数取不到时按 1 核算，免得除零。
- */
-function loadPct(node: Node): number | null {
-  const m = node.metrics
-  return m ? percent(m.load[0], Math.max(1, node.cpu_cores || 1)) : null
 }
 
 /**
@@ -193,13 +224,13 @@ function trafficFoot(node: Node) {
 /**
  * 列表里的那张卡片（本主题唯一的一档，2026-10-15 照站长给的参考站重排）。
  *
- * 从上到下六块（行距、字号按参考站校准过：整卡 ~510×216，那边是 508×209）。
+ * 从上到下五块（行距、字号按参考站校准过：整卡 ~336×186（1440 三列）/ 358×186（手机单列））。
  *   ① 身份行：旗子 + 名字（离线时右端一枚「已离线」徽章）；
  *   ② 一行灰字：系统 · 运行时间（四种处境的口径见 metaLine）；
- *   ③ 四个读数格：CPU / 内存 / 存储 / 负载（上面一条分隔线，见 Meter）；
- *   ④ 上传 / 下载：左右两栏，各带累计总量与实时速率，中间一道竖线；
- *   ⑤ 总流量：左边「已用 / 额度」、右边「流量重置」，下面一条全宽进度条；
- *   ⑥ 底注：价格 / 到期（左）＋ 备注小卡片（最多 CARD_CHIPS 枚，右）——**恒定占位**，
+ *   ③ 三格读数 CPU / 内存 / 存储 ＋ 第四格：上行 / 下行两行速率（没有表名，2026-10-20 站长
+ *      第二轮要求去掉「网络」二字 —— 箭头已经说明了方向；累计总量在悬停说明里）；
+ *   ④ 总流量：左「流量 ↕ 每月 N 日 ⇄」、右「已用 / 额度」，下面一条全宽进度条；
+ *   ⑤ 底注：价格 / 到期（左）＋ 备注小卡片（最多 CARD_CHIPS 枚，右）——**恒定占位**，
  *      有备注没备注、有价格没价格，卡片都一样高（2026-10-15 站长定的）。
  *
  * 不含延迟那一块——那在整页详情里看（点卡片进去）。
@@ -223,6 +254,8 @@ export function NodeCard({ node, onOpen, onWarm }: {
   // 公有那几枚，所以同一个位置他们看到的就是公有。卡片这一侧只取前 CARD_CHIPS 枚。
   const chips = remarkChips(node).slice(0, CARD_CHIPS)
   const note = noteText(node)
+  // 「已用 / 额度」的整串（分色渲染用：前半深、后半灰）。
+  const traffic = trafficFoot(node)
   // 可访问名：名字 + 离线状态；空名字给一句兜底，别让链接没有名字。
   const label = `${node.name || "未命名节点"}${deployed(node) && !node.online ? "（已离线）" : ""}`
   return (
@@ -242,7 +275,7 @@ export function NodeCard({ node, onOpen, onWarm }: {
       data-status={on ? "on" : "off"}
       // ★整卡可点，但**语义控件是标题里的链接**（2026-10-20）：role="button" 的后代按 ARIA
       //   是 presentational，会把四行读数从可访问树里盖掉；而铺满卡片的透明链接又会挡住卡内
-      //   各处的 title 悬停（核数 / 已用·总量 / 负载均值 / 国旗 / 备注全文）与文字选择。
+      //   各处的 title 悬停（核数 / 已用·总量 / 上传下载累计 / 计费方式 / 国旗 / 备注全文）与文字选择。
       //   现在 h2 里是一枚真链接（Ctrl/⌘、中键、右键、Enter 都成立），卡根只兜住其余区域的
       //   左键点击 —— 点击范围不变，读数、title、选区都还在。
       onClick={(e) => {
@@ -288,17 +321,21 @@ export function NodeCard({ node, onOpen, onWarm }: {
       </div>
 
       {/* ② 系统 · 运行时间：与名字左对齐的一行灰字（@/lib/format 的 osName 去掉代号那截）。 */}
-      <p className="mt-0.5 truncate text-[11px] leading-4 text-muted-foreground">{metaLine(node)}</p>
+      <p className="mt-1 truncate text-[11px] leading-4 text-muted-foreground">{metaLine(node)}</p>
 
       {/* One layout for both states: a disconnected node still knows its
           cores, memory, disk size and traffic totals, and showing those with
           the live figures blank beats a stretched card with one line in it. */}
       {deployed(node) ? (
         <>
-          {/* ③ 四个读数格：参考站的口径是「表名 / 读数 / 条」一列到底，上面一条分隔线把头部
-              与读数区隔开。格子里只剩百分比：核数、已用 / 总量挪进各自的悬停说明（Meter 的
-              title），整页详情里仍然写全。 */}
-          <div data-metrics="" className="mt-1.5 grid grid-cols-4 gap-x-3 border-t pt-1.5">
+          {/* ③ 三格读数（CPU / 内存 / 存储）＋ 第四格两行速率：参考站的口径是「表名 / 读数 / 条」
+              一列到底，上面一条分隔线把头部与读数区隔开。格子里只剩百分比：核数、已用 / 总量
+              挪进各自的悬停说明（Meter 的 title），整页详情里仍然写全。
+              ★第四格 2026-10-20 站长两轮要求：① 负载撤掉、上传 / 下载挪进这一格；② 连「网络」
+                这个表名也不要 —— 只剩两行速率（`↑` / `↓` 用 --ok 区分方向）。没有表名，两行就
+                顶到别的格表名那一行上，第二行正好与它们的读数行齐平；累计总量在悬停说明里
+                （110px 的格子塞不下「累计 4.85 GB」）。 */}
+          <div data-metrics="" className="mt-2 grid grid-cols-[1fr_1fr_1fr_1.3fr] gap-x-3 border-t pt-2">
             <Meter
               label="CPU"
               title={cores > 0 ? `${cores} 核` : undefined}
@@ -317,43 +354,51 @@ export function NodeCard({ node, onOpen, onWarm }: {
               pct={m ? percent(m.disk_used, m.disk_total) : null}
               value={m ? `${percent(m.disk_used, m.disk_total).toFixed(2)}%` : "—"}
             />
-            {/* 负载：读数是 1 分钟均值，条按「满载的几成」上色（见 loadPct），三条均值在悬停说明里。 */}
-            <Meter
-              label="负载"
-              title={m ? `1 / 5 / 15 分钟：${m.load.map((n) => n.toFixed(2)).join(" ")}` : undefined}
-              pct={loadPct(node)}
-              value={m ? m.load[0].toFixed(2) : "—"}
-            />
-          </div>
-
-          {/* ④ 上传 / 下载：左上传、右下载，中间一道竖线把两栏分开（参考站如此）。
-              速率是这一块的重心（大字加粗）；累计总量弱化成灰字跟在标签那一行的右端。
-              箭头保留 ↑ / ↓（可以整段复制），颜色用 --ok —— 卡片上唯一的彩色笔画。
-              `data-net` 是给护栏认这一块用的锚点。 */}
-          <div data-net="row" className="mt-1.5 grid grid-cols-2">
-            <div className="min-w-0 pr-3">
-              <div className="flex items-baseline justify-between gap-2 text-xs">
-                <span className="shrink-0 text-ok-ink">↑ 上传</span>
-                <span className="tnum min-w-0 truncate text-[11px] leading-4 text-muted-foreground">累计 {bytes(totalTx)}</span>
+            <div
+              data-net="cell"
+              role="group"
+              aria-label="上传 / 下载"
+              className="min-w-0"
+              title={m
+                ? `上传 ${rate(m.net_tx)} · 累计 ${bytes(totalTx)}\n下载 ${rate(m.net_rx)} · 累计 ${bytes(totalRx)}`
+                : `累计 ${bytes(totalTx)} / ${bytes(totalRx)}`}
+            >
+              <div className="tnum truncate text-right text-[12px] font-semibold leading-4">
+                <span className="mr-0.5 text-ok-ink">↑</span>{m ? rate(m.net_tx) : "—"}
               </div>
-              <div className="tnum mt-0.5 truncate text-sm font-semibold leading-5">{m ? rate(m.net_tx) : "—"}</div>
-            </div>
-            <div className="min-w-0 border-l pl-3">
-              <div className="flex items-baseline justify-between gap-2 text-xs">
-                <span className="shrink-0 text-ok-ink">↓ 下载</span>
-                <span className="tnum min-w-0 truncate text-[11px] leading-4 text-muted-foreground">累计 {bytes(totalRx)}</span>
+              <div className="tnum truncate text-right text-[12px] font-semibold leading-[18px]">
+                <span className="mr-0.5 text-ok-ink">↓</span>{m ? rate(m.net_rx) : "—"}
               </div>
-              <div className="tnum mt-0.5 truncate text-sm font-semibold leading-5">{m ? rate(m.net_rx) : "—"}</div>
             </div>
           </div>
 
-          {/* ⑤ 总流量：数字行（左：已用 / 额度，右：重置日；没有额度就写 N/A，与参考站一致），
-              再下面一条全宽进度条 —— 用量按套餐的计流量方式算（trafficFoot / monthUsage）。 */}
-          <div className="tnum mt-1.5 flex items-baseline justify-between gap-2 text-[11px] text-muted-foreground">
-            <span className="min-w-0 truncate font-medium text-foreground/85">{trafficFoot(node)}</span>
-            <span className="shrink-0">
-              {/* 重置日缺失（形状漂移）写「—」而不是「每月 undefined 日」；不限量仍是 N/A。 */}
-              流量重置：{node.traffic_limit > 0 ? (resetDay > 0 ? `每月 ${resetDay} 日` : "—") : "N/A"}
+          {/* ④ 总流量：左「流量 ↕ 每月 N 日 ⇄」、右「已用 / 额度」。
+              两个图标同一支笔：↕ 是 lucide ArrowUpDown（12px、2.0 线宽），末尾那枚是 lucide Repeat
+              （12px、1.8 线宽 —— 2026-10-20 按站长给的图从方角自绘换回圆角版）；
+              右侧用量分色（已用 13px 加粗、额度 11px 灰）、右对齐到卡片右缘。 */}
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <span className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
+              流量
+              <span
+                data-net-mode={node.traffic_mode || "sum"}
+                title={`计费方式：${Object.hasOwn(TRAFFIC_MODE_LABEL, node.traffic_mode) ? TRAFFIC_MODE_LABEL[node.traffic_mode] : TRAFFIC_MODE_LABEL.sum}`}
+                className="flex shrink-0 items-center"
+              >
+                <TrafficModeIcon mode={node.traffic_mode} />
+              </span>
+              <span data-reset className="tnum truncate">
+                {/* 重置日缺失（形状漂移）写「—」而不是「每月 undefined 日」；不限量仍是 N/A。 */}
+                {node.traffic_limit > 0 ? (resetDay > 0 ? `每月 ${resetDay} 日` : "—") : "N/A"}
+              </span>
+              <Repeat className="size-3 shrink-0" strokeWidth={1.8} aria-hidden />
+            </span>
+            {/* 用量分色（2026-10-20）：已用数字保持 13px 加粗，额度那截（`/ 500.00 GB`）降一档灰字 ——
+                一行里先读到的应该是「用了多少」。 */}
+            <span className="tnum shrink-0 text-[13px] font-semibold leading-[18px]">
+              {traffic.split(" / ")[0]}
+              {traffic.includes(" / ") && (
+                <span className="text-[11px] font-normal text-muted-foreground">{" / "}{traffic.split(" / ").slice(1).join(" / ")}</span>
+              )}
             </span>
           </div>
           <div className="mt-1 h-[3px] w-full overflow-hidden rounded-full bg-muted">
@@ -363,14 +408,14 @@ export function NodeCard({ node, onOpen, onWarm }: {
             />
           </div>
 
-          {/* ⑥ 底注：价格 / 到期在左、备注小卡片在右。★这一行**恒定占位**（见下面那条 ★ 注释）。
+          {/* ⑤ 底注：价格 / 到期在左、备注小卡片在右。★这一行**恒定占位**（见下面那条 ★ 注释）。
               `data-remark="card"` 是护栏的锚点（与整页详情那一块的 `data-remark-block` 区分开）。 */}
           {/* ★这一行**恒定占位**（h-4 = 16px）：有没有备注、有没有价格，卡片都一样高
               —— 2026-10-15 站长要求「无备注 / 有备注两种情况下卡片大小相同」。
               小卡片也收成紧凑档（15px），塞得进这 16px，不再把整卡撑高 6px。 */}
-          <div className="mt-1.5 flex h-4 min-w-0 items-center justify-between gap-2">
+          <div className="mt-2 flex h-4 min-w-0 items-center justify-between gap-2 overflow-hidden">
             <span className="tnum min-w-0 truncate text-[11px] leading-4 text-muted-foreground">{note}</span>
-            <span data-remark="card" className="flex min-w-0 shrink items-center justify-end gap-1">
+            <span data-remark="card" className="flex min-w-0 max-w-[62%] shrink items-center justify-end gap-1 overflow-hidden">
               <RemarkChips chips={chips} />
             </span>
           </div>

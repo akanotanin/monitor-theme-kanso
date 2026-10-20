@@ -46,8 +46,8 @@ const NodeDetail = lazy(loadDetail)
  *   ① **五张图是页签块的兄弟、不是孩子** —— 嵌进去的话，页签与图之间那 16px 变成 8px，
  *      整页少 8px；（2026-10-06 修）
  *   ② **规格格数与真实页同源**（2026-10-15 修 TCP / UDP 连接那格；2026-10-20 再改一轮）——
- *      真实页现在：**有 metrics 时 9 格**（系统、架构、进程、CPU、内存 / 交换分区、硬盘、
- *      TCP / UDP 连接、今日流量、在线时间），**metrics 缺时 7 格**（连接数与进程隐身）。
+ *      真实页现在：**有 metrics 时 9 格**（系统、架构、负载、CPU、内存 / 交换分区、硬盘、
+ *      TCP / UDP 连接、今日流量、在线时间），**metrics 缺时 7 格**（负载与连接数隐身）。
  *      骨架必须摆同样的格数：桌面三列时 7 格与 9 格都是三行、看不出差；手机一列就差两行（96px），
  *      verify_detail_preload 的手机档会照出来。
  *      判法与真实页同源（那边 `const m = node.metrics`）：`metrics` 在才画那两格（离线机器它们隐身、
@@ -441,12 +441,12 @@ export default function App() {
           )
         ) : !nodes ? (
           // 还在等节点列表：骨架与卡片网格同一版式。
-          // 高度跟着卡片来 —— 2026-10-15 卡片改成参考站那一套（身份行 + 系统行 + 四个读数格 +
-          // 上传下载 + 总流量 + 底注）之后，六种卡片一律 510×217.5（底注行恒定占位），
-          // 骨架取 218 去贴（见 tools/verify_card_form）。
-          <div className="grid gap-3 md:grid-cols-2">
+          // 高度跟着卡片来 —— 2026-10-20 卡片改成「三格读数（CPU / 内存 / 存储）+ 第四格两行速率」、
+          // 撤掉负载、整行上传下载与「网络」表名，流量行按参考站改成「左流量 ↕ 重置周期 ⟳ +
+          // 右已用/额度」、列表改成 1440 三列之后，卡片在桌面上 ~336×186（底注行恒定占位），骨架取 186 去贴（见 tools/verify_card_form）。
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {[0, 1, 2].map((i) => (
-              <Skeleton key={i} className="h-[218px] rounded-2xl" />
+              <Skeleton key={i} className="h-[186px] rounded-2xl" />
             ))}
           </div>
         ) : (
@@ -560,10 +560,10 @@ function NodeList({ nodes, onOpen, onWarm }: {
       {nodes.length === 0 ? (
         <p className="py-16 text-center text-sm text-muted-foreground">还没有节点</p>
       ) : (
-        // ★ 一行两张宽卡（2026-10-15 照站长给的参考站定的：那边 768 起就是两列、卡片 508×209，
-        //   整页容器约 1040）。本站容器同步收到 1080 → 两列即每张 510 宽，和参考站一样。
-        //   原先的 2/3/4 列 + 1280 容器让卡片窄而高（299×266），形态差得远。
-        <div className="grid items-start gap-3 md:grid-cols-2">
+        // ★2026-10-20：容器仍是 1080，**1280（xl）起一行三张**（每张 336×186），768–1279 两列（~481）。
+        //   三列一开始挂在 lg（1024）上 —— 实测 1024 视口卡片只有 312 宽、三格读数 56px，
+        //   「100.00%」会被截成「100.0…」，所以断点提到 xl（1280 起，容器已满宽、卡片回到 336）。
+        <div className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
           {list.map((n) => (
             <NodeCard key={n.id} node={n} onOpen={() => onOpen(n.id)} onWarm={onWarm} />
           ))}

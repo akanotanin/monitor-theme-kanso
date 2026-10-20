@@ -119,6 +119,16 @@ export function metaLine(node: Node): string {
 }
 
 /**
+ * 速率拆成「数值 / 单位」两截：第四格里数值走 13px（与左边读数同档）、单位压到 10px 灰。
+ * `rate()` 的输出固定是「数字 空格 单位」（含 `B/s`、`MB/s` 这类带斜杠的单位），按最后一个空格切。
+ */
+function rateParts(n: number): [string, string] {
+  const s = rate(n)
+  const i = s.lastIndexOf(" ")
+  return i < 0 ? [s, ""] : [s.slice(0, i), s.slice(i + 1)]
+}
+
+/**
  * 底注那行小字：`价格 ¥47.00/年 · 剩余 179 天`（有哪截写哪截；都没有就留空 ——
  * 那一行**照样占位**，卡片高度不能因为有没有这段字而变，见下面 ⑥ 的 ★）。
  *
@@ -256,6 +266,9 @@ export function NodeCard({ node, onOpen, onWarm }: {
   const note = noteText(node)
   // 「已用 / 额度」的整串（分色渲染用：前半深、后半灰）。
   const traffic = trafficFoot(node)
+  // 第四格的两行速率（数值 / 单位分开渲染，见 rateParts）。
+  const upRate = m ? rateParts(m.net_tx) : null
+  const downRate = m ? rateParts(m.net_rx) : null
   // 可访问名：名字 + 离线状态；空名字给一句兜底，别让链接没有名字。
   const label = `${node.name || "未命名节点"}${deployed(node) && !node.online ? "（已离线）" : ""}`
   return (
@@ -335,7 +348,7 @@ export function NodeCard({ node, onOpen, onWarm }: {
                 这个表名也不要 —— 只剩两行速率（`↑` / `↓` 用 --ok 区分方向）。没有表名，两行就
                 顶到别的格表名那一行上，第二行正好与它们的读数行齐平；累计总量在悬停说明里
                 （110px 的格子塞不下「累计 4.85 GB」）。 */}
-          <div data-metrics="" className="mt-2 grid grid-cols-[1fr_1fr_1fr_1.3fr] gap-x-3 border-t pt-2">
+          <div data-metrics="" className="mt-2 grid grid-cols-[1fr_1fr_1fr_1.35fr] gap-x-3 border-t pt-2">
             <Meter
               label="CPU"
               title={cores > 0 ? `${cores} 核` : undefined}
@@ -363,11 +376,16 @@ export function NodeCard({ node, onOpen, onWarm }: {
                 ? `上传 ${rate(m.net_tx)} · 累计 ${bytes(totalTx)}\n下载 ${rate(m.net_rx)} · 累计 ${bytes(totalRx)}`
                 : `累计 ${bytes(totalTx)} / ${bytes(totalRx)}`}
             >
-              <div className="tnum truncate text-right text-[12px] font-semibold leading-4">
-                <span className="mr-0.5 text-ok-ink">↑</span>{m ? rate(m.net_tx) : "—"}
+              {/* 数值 13px（与左边读数同档）+ 单位 10px 灰：这格没有表名、也没有条，靠这一档
+                  把「649 B/s」拉回读数区那一层，而不是读成两行备注；行高 16 / 18 分别对住
+                  左边「表名行 / 读数行」的基线。 */}
+              <div className="tnum truncate text-right text-[13px] font-semibold leading-4">
+                <span className="mr-0.5 text-[11px] font-normal text-ok-ink">↑</span>
+                {upRate ? (<>{upRate[0]}{" "}<span className="text-[10px] font-normal text-muted-foreground">{upRate[1]}</span></>) : "—"}
               </div>
-              <div className="tnum truncate text-right text-[12px] font-semibold leading-[18px]">
-                <span className="mr-0.5 text-ok-ink">↓</span>{m ? rate(m.net_rx) : "—"}
+              <div className="tnum truncate text-right text-[13px] font-semibold leading-[18px]">
+                <span className="mr-0.5 text-[11px] font-normal text-ok-ink">↓</span>
+                {downRate ? (<>{downRate[0]}{" "}<span className="text-[10px] font-normal text-muted-foreground">{downRate[1]}</span></>) : "—"}
               </div>
             </div>
           </div>

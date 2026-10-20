@@ -290,12 +290,12 @@ check('★ 整行上传 / 下载两栏已撤、第四格也没有表名（卡片
 
 // ⑤ 总流量（2026-10-20 照参考站：用量挪到右端、放大加粗；左边是「流量 ↕ 重置周期 ⟳」）
 console.log('\n⑤ 总流量：左「流量 ↕ 重置周期 ⟳」+ 右「已用 / 额度」')
-check('左边「流量 ↕ 每月 21 日 ⟳」、右边加粗「8.38 / 500.00 GB」',
-  /^流量/.test(one?.traffic ?? '') && /每月 21 日/.test(one.traffic) &&
+check('左边「流量 · 21 日重置」（无图标）、右边加粗「8.38 / 500.00 GB」',
+  /^流量/.test(one?.traffic ?? '') && /21 日重置/.test(one.traffic) && !/每月/.test(one.traffic) &&
   /8\.38\s*\/\s*500\.00 GB$/.test(one.traffic.trim()) && !/流量重置/.test(one.traffic),
   String(one?.traffic))
 check('不限量的那台：重置那截写 N/A、用量那截写「X / ∞」',
-  /^流量[\s|]*N\/A/.test((unlim?.traffic ?? '').trim()) && /∞$/.test((unlim?.traffic ?? '').trim()),
+  /^流量[\s|·]*N\/A/.test((unlim?.traffic ?? '').trim()) && /∞$/.test((unlim?.traffic ?? '').trim()),
   String(unlim?.traffic))
 check('全宽进度条按 已用 / 额度 上色（8.38 / 500 ≈ 1.68%）',
   Math.abs(Number.parseFloat(one?.barW ?? '0') - 1.676) < 0.05, String(one?.barW))

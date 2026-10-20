@@ -14,7 +14,7 @@
 
 | 亮色 | 暗色 | 手机 |
 |:---:|:---:|:---:|
-| ![预览](preview-light.png?v=12) | ![暗色](preview-dark.png?v=12) | ![手机](preview-mobile.png?v=12) |
+| ![预览](preview-light.png?v=13) | ![暗色](preview-dark.png?v=13) | ![手机](preview-mobile.png?v=13) |
 
 
 ## 关于备注

@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ArrowDown, ArrowUp, ArrowUpDown, Lock, Repeat } from "lucide-react"
+import { ArrowDown, ArrowUp, ArrowUpDown, Lock } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
@@ -390,33 +390,37 @@ export function NodeCard({ node, onOpen, onWarm }: {
             </div>
           </div>
 
-          {/* ④ 总流量：左「流量 ↕ 每月 N 日 ⇄」、右「已用 / 额度」。
-              两个图标同一支笔：↕ 是 lucide ArrowUpDown（12px、2.0 线宽），末尾那枚是 lucide Repeat
-              （12px、1.8 线宽 —— 2026-10-20 按站长给的图从方角自绘换回圆角版）；
-              右侧用量分色（已用 13px 加粗、额度 11px 灰）、右对齐到卡片右缘。 */}
+          {/* ④ 总流量（2026-10-21 重排）：左「流量 · 每月 N 日 ⇄」、右「[计费方式] 已用 / 额度」。
+              ★计费方式图标从「流量」旁边挪到**用量数字前面** —— 它说明的是「这个用量按哪种方式算出来的」，
+                贴着数字才对；左边因此从「文字-图标-文字-图标」的三明治变成「标签 · 周期 ⇄」，一行只剩两枚
+                图标且分居两端，中间不再被夹住。重置图标仍是 lucide Repeat（12px、1.8 线宽）。 */}
           <div className="mt-2 flex items-center justify-between gap-3">
             <span className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
               流量
+              <span aria-hidden className="size-[2px] shrink-0 rounded-full bg-current opacity-40" />
+              <span data-reset className="tnum truncate">
+                {/* 重置日缺失（形状漂移）写「—」而不是「每月 undefined 日」；不限量仍是 N/A。
+                    2026-10-21：末尾那枚 ⇄ 去掉，直接写「重置」—— 两个字的语义比一个循环图标清楚，
+                    这一行也不再是「文字-图标-文字-图标」的夹心。 */}
+                {node.traffic_limit > 0 ? (resetDay > 0 ? `${resetDay} 日重置` : "—") : "N/A"}
+              </span>
+            </span>
+            {/* 右侧：计费方式 + 用量分色（已用 13px 加粗、额度 11px 灰）—— 一行里先读到「用了多少」，
+                再看是按合计 / 取大 / 单向上行算的。 */}
+            <span className="flex shrink-0 items-center gap-1.5 text-[13px] font-semibold leading-[18px]">
               <span
                 data-net-mode={node.traffic_mode || "sum"}
                 title={`计费方式：${Object.hasOwn(TRAFFIC_MODE_LABEL, node.traffic_mode) ? TRAFFIC_MODE_LABEL[node.traffic_mode] : TRAFFIC_MODE_LABEL.sum}`}
-                className="flex shrink-0 items-center"
+                className="flex shrink-0 items-center text-muted-foreground"
               >
                 <TrafficModeIcon mode={node.traffic_mode} />
               </span>
-              <span data-reset className="tnum truncate">
-                {/* 重置日缺失（形状漂移）写「—」而不是「每月 undefined 日」；不限量仍是 N/A。 */}
-                {node.traffic_limit > 0 ? (resetDay > 0 ? `每月 ${resetDay} 日` : "—") : "N/A"}
+              <span className="tnum">
+                {traffic.split(" / ")[0]}
+                {traffic.includes(" / ") && (
+                  <span className="text-[11px] font-normal text-muted-foreground">{" / "}{traffic.split(" / ").slice(1).join(" / ")}</span>
+                )}
               </span>
-              <Repeat className="size-3 shrink-0" strokeWidth={1.8} aria-hidden />
-            </span>
-            {/* 用量分色（2026-10-20）：已用数字保持 13px 加粗，额度那截（`/ 500.00 GB`）降一档灰字 ——
-                一行里先读到的应该是「用了多少」。 */}
-            <span className="tnum shrink-0 text-[13px] font-semibold leading-[18px]">
-              {traffic.split(" / ")[0]}
-              {traffic.includes(" / ") && (
-                <span className="text-[11px] font-normal text-muted-foreground">{" / "}{traffic.split(" / ").slice(1).join(" / ")}</span>
-              )}
             </span>
           </div>
           <div className="mt-1 h-[3px] w-full overflow-hidden rounded-full bg-muted">

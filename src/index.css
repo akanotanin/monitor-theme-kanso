@@ -197,6 +197,22 @@
 /* Tabular figures keep live numbers from shifting as they update. */
 .tnum { font-variant-numeric: tabular-nums; }
 
+/* 卡片网格：**卡片尺寸恒定，变的是列数**（2026-10-25 站长口径）。
+   卡片按 336 宽设计（1440 上三列），窗口变窄时不该把卡片拉胖，而是少摆一列；
+   装不下 336 时（比手机 368 还窄的屏幕）才让步 —— 用 `min(336px, 100%)` 兜住，
+   免得溢出。列数由 auto-fit 依容器**可用宽度**算，与视口断点无关。
+   ★为什么不再用「md 两列 / xl 三列」：那样列数看视口、而容器封顶 1080（可用 1032），
+     两边对不上 —— 1100–1279 视口上容器已满宽却仍只摊两列，两张卡各被拉到 510 宽
+     （三格读数从 61 涨到 101，读数与右端速率之间空成一片），700 左右更是单张 637 宽。
+     量法见 tools/probe_grid_band.mjs。 */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(336px, 100%), 336px));
+  justify-content: center;
+  align-items: start;
+  gap: 0.75rem;
+}
+
 /* 页脚署名（右下角那行）：比正文的弱化色再淡一档，只作署名，不跟页面里的读数抢注意力；
    「Kanso」那截是本主题的源码仓库链接（地址见 App.tsx 的 REPO_URL），悬停才出下划线。 */
 /* 顶栏那条图标带（.header-tools）：装不下时横向滑动（这套做法与 1.0.0 起已删的分组标签行同源）。

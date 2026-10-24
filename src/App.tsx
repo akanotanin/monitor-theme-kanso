@@ -444,7 +444,7 @@ export default function App() {
           // 高度跟着卡片来 —— 2026-10-20 卡片改成「三格读数（CPU / 内存 / 存储）+ 第四格两行速率」、
           // 撤掉负载、整行上传下载与「网络」表名，流量行按参考站改成「左流量 ↕ 重置周期 ⟳ +
           // 右已用/额度」、列表改成 1440 三列之后，卡片在桌面上 ~336×186（底注行恒定占位），骨架取 186 去贴（见 tools/verify_card_form）。
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="card-grid">
             {[0, 1, 2].map((i) => (
               <Skeleton key={i} className="h-[186px] rounded-2xl" />
             ))}
@@ -560,10 +560,10 @@ function NodeList({ nodes, onOpen, onWarm }: {
       {nodes.length === 0 ? (
         <p className="py-16 text-center text-sm text-muted-foreground">还没有节点</p>
       ) : (
-        // ★2026-10-20：容器仍是 1080，**1280（xl）起一行三张**（每张 336×186），768–1279 两列（~481）。
-        //   三列一开始挂在 lg（1024）上 —— 实测 1024 视口卡片只有 312 宽、三格读数 56px，
-        //   「100.00%」会被截成「100.0…」，所以断点提到 xl（1280 起，容器已满宽、卡片回到 336）。
-        <div className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
+        // ★2026-10-25：列数交给 `.card-grid`（auto-fit 324–400 + 居中）—— 断点按视口、版式按容器
+        //   那一版在 1100–1279 上把每张卡摊到 510 宽、700 左右摊到 637 宽，读数区空成一片。
+        //   同一份口径见 index.css 的 .card-grid 与 tools/probe_grid_band.mjs。
+        <div className="card-grid">
           {list.map((n) => (
             <NodeCard key={n.id} node={n} onOpen={() => onOpen(n.id)} onWarm={onWarm} />
           ))}

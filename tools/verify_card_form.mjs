@@ -162,7 +162,7 @@ const probe = `(() => {
       meta: c.querySelector('p')?.textContent ?? null,
       cells,
       gridCols: m ? getComputedStyle(m).gridTemplateColumns.split(' ').length : 0,
-      // 列表那一层：一行几张卡（照参考站的口径，768 起两列宽卡）。
+      // 列表那一层：一行几张卡（列数按容器可用宽度算，卡片恒 336 宽）。
       listCols: getComputedStyle(c.parentElement).gridTemplateColumns.split(' ').length,
       divider: m ? getComputedStyle(m).borderTopWidth : null,
       net: net ? {
@@ -351,16 +351,19 @@ check('1440 视口上整页没有横向溢出',
   (await js('document.documentElement.scrollWidth <= document.documentElement.clientWidth')) === true,
   `${await js('document.documentElement.scrollWidth')} vs ${await js('document.documentElement.clientWidth')}`)
 
-// ★断点：三列挂在 xl（1280），1024 / 768 都应是两列 —— 挂 lg 那版在 1024 把卡片压到 312 宽、
-//   三格读数只剩 56px（「100.00%」被截成「100.0…」）。这里各量一次，别只钉 1440 / 390 两端。
-for (const [w, want, minW] of [[1024, 2, 440], [768, 2, 330]]) {
+// ★宽度带（2026-10-25 站长口径）：窗口变窄时**卡片尺寸不变、只少摆一列**。
+//   旧断点（md 两列 / xl 三列）在 1100–1279 视口上把两张卡各拉到 510 宽、700 左右单张 637 宽 ——
+//   三格读数从设计的 61 涨到 101/130，读数与右端速率之间空成一片（站长两张对照图指的就是这个）。
+//   现在列数由容器的可用宽度算（.card-grid 的 auto-fit），卡片恒 336×186。逐档量，别只钉两端：
+//   三列 ≥1095 视口、两列 732–1094、一列 <732（容器封顶 1080 时可用宽 1032）。
+for (const [w, want] of [[1280, 3], [1100, 3], [1024, 2], [900, 2], [768, 2], [700, 1]]) {
   await send('Emulation.setDeviceMetricsOverride', { width: w, height: 1200, deviceScaleFactor: 1, mobile: false })
   await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` })
   for (let i = 0; i < 60; i++) { await sleep(200); if (await js(`document.querySelectorAll('[data-node-card]').length === 6`)) break }
   await sleep(600)
   const m = JSON.parse(await js(probe) ?? '[]')[0]
-  check(`★ ${w} 视口：${want} 列、卡片 ≥ ${minW} 宽（三格读数不被压窄）`,
-    m?.listCols === want && m?.box.w >= minW,
+  check(`★ ${w} 视口：${want} 列、卡片仍是 336×186（窗口变窄不把卡片拉胖）`,
+    m?.listCols === want && m?.box.w === 336 && m?.box.h === 186,
     JSON.stringify({ listCols: m?.listCols, card: `${m?.box?.w}x${m?.box?.h}` }))
 }
 // 回到 1440 再往下跑（⑨ 的点击/键盘判据按 1440 摆位）
@@ -376,7 +379,7 @@ for (let i = 0; i < 60; i++) { await sleep(200); if (await js(`document.querySel
 await sleep(700)
 const m390 = JSON.parse(await js(probe) ?? '[]')
 check('手机上一列：四列仍是四列（三格读数 + 网络格）', m390[0]?.gridCols === 4 && m390[0]?.cells.length === 3, `${m390[0]?.gridCols} / ${m390[0]?.cells?.length}`)
-check('手机上一列：列表是单列（两列宽卡从 768 起）', m390[0]?.listCols === 1, `listCols=${m390[0]?.listCols}`)
+check('手机上一列：列表是单列（卡片恒 336，容不下两列就只摆一列）', m390[0]?.listCols === 1, `listCols=${m390[0]?.listCols}`)
 check('手机上三格读数与网络格两行速率都没被截（scrollWidth ≤ clientWidth）',
   (await js(`(() => {
     const c = document.querySelector('[data-node-card]')

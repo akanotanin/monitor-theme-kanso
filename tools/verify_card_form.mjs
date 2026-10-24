@@ -379,7 +379,9 @@ for (let i = 0; i < 60; i++) { await sleep(200); if (await js(`document.querySel
 await sleep(700)
 const m390 = JSON.parse(await js(probe) ?? '[]')
 check('手机上一列：四列仍是四列（三格读数 + 网络格）', m390[0]?.gridCols === 4 && m390[0]?.cells.length === 3, `${m390[0]?.gridCols} / ${m390[0]?.cells?.length}`)
-check('手机上一列：列表是单列（卡片恒 336，容不下两列就只摆一列）', m390[0]?.listCols === 1, `listCols=${m390[0]?.listCols}`)
+check('手机上一列：列表是单列、卡片**铺满可用宽度**（电脑固定 336，手机上照旧铺满）',
+  m390[0]?.listCols === 1 && m390[0]?.box.w === 358,
+  `listCols=${m390[0]?.listCols} card=${m390[0]?.box?.w}`)
 check('手机上三格读数与网络格两行速率都没被截（scrollWidth ≤ clientWidth）',
   (await js(`(() => {
     const c = document.querySelector('[data-node-card]')

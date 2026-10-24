@@ -1,9 +1,11 @@
 // 预览图三件套一次生成（公开仓库用，中性数据）：
 //   ① preview-light.png   列表页 1440×810 @2x（亮）
 //   ② preview-dark.png    同一机位的深色版（按系统暗色拍，见 shot_preview.mjs 的第 7 参数）
-//   ③ preview-mobile.png  手机档 585×1500 @2x（1170×3000，单列全列：六张卡 + 页脚都装得下）
-// ★手机档口径＝585×1500@2 —— 与线上成品（1.5.0 起）逐像素对得上；390×844@3 只看得见三张半、页脚也进不来。
-// ★preview.png 不在这里：1.6.1 起它是「角色封面」（tools/preview-cover.mjs 出图，随进发布包、也是
+//   ③ preview-mobile.png  手机档 430×1400 @2x（860×2800，单列铺满：六张卡 + 页脚都装得下）
+// ★手机档口径＝430×1400@2（2026-10-25 起）：手机档的卡片是**铺满可用宽度**的，430 是常见手机宽度、
+//   拍出来与真机一致。更早的 585×1500@2 是配「单列卡片也固定 336」那一版定的 —— 那一档已经被站长
+//   否掉（「电脑固定、手机照旧」），585 宽现在会拍成「336 卡居中、两侧一百多像素白边」的平板相。
+// ★preview.png 不在这里：1.6.1 起它是「角色封面」（tools/preview-cover.mjs 出图、随进发布包、也是
 //   README 顶部大图），与本套截图分工不同 —— 这个工具不许覆写它（三件套的亮色那张叫 preview-light.png）。
 // 自起桩服务（tools/preview-nodes.json 的中性节点）→ 逐张调用 shot_preview.mjs → 关服务。
 // 数据来源必须中性：这三张会公开发在 GitHub 上，不许带真实机器名 / 金额（见 shot_preview.mjs 头部）。
@@ -29,7 +31,7 @@ const run = (args) => new Promise((res, rej) => {
 const BASE = `http://127.0.0.1:${PORT}`
 await run([BASE, 'preview-light.png', '1440', '810', '2'])
 await run([BASE, 'preview-dark.png', '1440', '810', '2', 'dark'])
-await run([BASE, 'preview-mobile.png', '585', '1500', '2'])
+await run([BASE, 'preview-mobile.png', '430', '1400', '2'])
 
 serve.kill()
 console.log('三张就位：preview-light.png / preview-dark.png / preview-mobile.png')

@@ -22,6 +22,8 @@ type Point = {
   /** 连接条数（hub 的历史桶里带着 `tcp / udp`；老 hub 的桶可能没有这个键——图会自行留白）。 */
   tcp?: number | null
   udp?: number | null
+  /** 进程总数（同一个历史桶的 `procs`；老 hub 的桶同样可能没有这个键）。 */
+  procs?: number | null
 }
 // `latency` is the bucket's median round trip, null when every probe in it timed
 // out. `band` is the range its answers spanned, absent when they spanned nothing.
@@ -319,6 +321,8 @@ export function NodeDetail({ node, historyDays }: {
     const max = (pick: (m: Point) => number) =>
       metricRows.reduce((hi, m) => Math.max(hi, pick(m)), 0)
     const connTop = axisTop(max((m) => Math.max(m.tcp ?? 0, m.udp ?? 0)), 4, 10)
+    // 进程数也是计数：与连接数同一条口径（下限 4、补到 4 的倍数，四分刻度不出 x.5）。
+    const procTop = axisTop(max((m) => m.procs ?? 0), 4, 10)
     return {
       // A floor of 4%, or a machine that never exceeds 0.4% would get an axis of
       // 0-0.4 and render every scheduler blip as a peak. Capped at 100.
@@ -331,6 +335,7 @@ export function NodeDetail({ node, historyDays }: {
       //   峰值落在 (4,6] / (8,10] / (20,30] 时轴顶会是 6 / 10 / 30。把轴顶补到 4 的倍数
       //   （6→8、10→12、30→32），任何峰值下四分刻度都是整数。
       conn: connTop + ((4 - (connTop % 4)) % 4),
+      procs: procTop + ((4 - (procTop % 4)) % 4),
     }
   }, [metricRows])
 
@@ -620,9 +625,11 @@ export function NodeDetail({ node, historyDays }: {
       ) : metricRows.length === 0 ? (
         <EmptyPanel>这段时间没有历史数据</EmptyPanel>
       ) : (
-        <div className="space-y-5">
+        // ★2026-10-30 与 rakugaki 1.20.0 同轮：资源区改成**每排两张、一共三排**（lg 起两列；
+        //   窄屏仍是一列）。进程卡排在 CPU 之前。
+        <div className="grid gap-5 lg:grid-cols-2">
           {/* ★2026-10-16 站长定稿的次序：网络速率与 TCP / UDP 连接打头（在 CPU 之前），
-              其后 CPU / 内存 / 硬盘。 */}
+              其后 进程 / CPU / 内存 / 硬盘（进程卡 2026-10-30 加、照站长要求排在 CPU 之前）。 */}
           {/* A rate has no total to be a fraction of, so this one climbs the
               ladder like CPU rather than pinning to a capacity. */}
           <Panel title="网络速率">
@@ -655,6 +662,19 @@ export function NodeDetail({ node, historyDays }: {
               hours={hours}
               top={tops.conn}
               label="TCP / UDP 连接数走势"
+            />
+          </Panel>
+
+          {/* ★2026-10-30 与 rakugaki 1.20.0 同轮新增：进程总数走势。hub 只上报进程**数**
+              （`procs`），没有逐进程的列表 —— 所以这张画的是条数，口径与「TCP / UDP 连接」同款：
+              计数不填面积、轴顶取窗口峰值并补到 4 的倍数。标题右端就是当前值。 */}
+          <Panel title={m && typeof m.procs === "number" ? `进程 · ${m.procs}` : "进程"}>
+            <TimeChart
+              rows={metricRows}
+              series={[{ key: "procs", name: "进程", color: "var(--chart-8)" }]}
+              hours={hours}
+              top={tops.procs}
+              label="进程数走势"
             />
           </Panel>
 

@@ -67,6 +67,7 @@ const METRICS = {
       net_tx: gap ? null : 200 + i * 8,
       tcp: gap ? null : 8 + (i % 2),          // 8~9 → axisTop(9,4,10) = 10、补到 4 的倍数 = 12（刻度 0/3/6/9/12）
       udp: gap ? null : 2 + (i % 3),          // 2~4（与 tcp 同轴，两条线各自画得出来）
+      procs: gap ? null : 60 + (i % 5),       // 60~64 → axisTop(64,4,10) = 70、补到 4 的倍数 = 72
     }
   }),
 }
@@ -150,7 +151,7 @@ await send('Emulation.setDeviceMetricsOverride', { width: 1000, height: 1200, de
 
 // 每一块面板量：标题、svg 尺寸、Y 轴刻度文字、X 轴刻度文字、面积/折线路径、路径里的断笔数
 const PROBE = `(() => {
-  const panels = [...document.querySelectorAll('h3')].filter((h) => /^(CPU|内存|网络速率|硬盘|TCP)/.test(h.textContent || ''))
+  const panels = [...document.querySelectorAll('h3')].filter((h) => /^(CPU|内存|网络速率|硬盘|TCP|进程)/.test(h.textContent || ''))
   return JSON.stringify(panels.map((h) => {
     const box = h.parentElement
     const svg = box.querySelector('svg')
@@ -190,7 +191,7 @@ async function open(url) {
     await sleep(400)
     charts = JSON.parse(await js(PROBE))
     // 等曲线真的画出来（只有坐标轴、还没有数据时截图会拍到一片空白 —— 第一版就拍到过）。
-    if (charts.length === 5 && charts.every((c) => c.svg && (c.area > 0 || c.line > 0))) break
+    if (charts.length === 6 && charts.every((c) => c.svg && (c.area > 0 || c.line > 0))) break
   }
   if (charts.length < 5) {
     const hint = await js(`(() => { const el = document.querySelector('main'); return el ? el.innerText.slice(0, 120).replace(/\\s+/g, ' ') : '(没有 main)' })()`)
@@ -230,12 +231,15 @@ async function shot(name, selector) {
 console.log(`\n详情页五张资源图（${REAL ? '真站' : UPSTREAM ? `本机 dist + 上游 ${UPSTREAM}` : '本机夹具'}）:`)
 const charts = await open(`${BASE}/node/1`)
 // ★2026-10-16 站长定稿的次序：网络速率与 TCP / UDP 连接打头（在 CPU 之前）。
-const PANELS = ['网络速率', 'TCP / UDP', 'CPU', '内存', '硬盘']
-check('五块面板都在、且次序＝网络速率 / TCP / UDP 连接 / CPU / 内存 / 硬盘',
-  charts.length === 5 && PANELS.every((t, i) => (charts[i]?.title || '').startsWith(t)),
+const PANELS = ['网络速率', 'TCP / UDP', '进程', 'CPU', '内存', '硬盘']
+// ★面板按**名字**取，别按下标：2026-10-30 加「进程」并排在 CPU 之前，下标一改就全错位。
+const pick = (prefix) => charts.find((c) => (c.title || '').startsWith(prefix))
+const pNet = pick('网络速率'), pConn = pick('TCP / UDP'), pCpu = pick('CPU'), pMem = pick('内存'), pDisk = pick('硬盘')
+check('六块面板都在、且次序＝网络速率 / TCP / UDP 连接 / 进程 / CPU / 内存 / 硬盘',
+  charts.length === 6 && PANELS.every((t, i) => (charts[i]?.title || '').startsWith(t)),
   JSON.stringify(charts.map((c) => c.title)))
 check('每块都有一张 svg，且撑满图表容器（h-40 = 160；总量未上报的块允许文字占位）',
-  charts.length === 5 && charts.every((c) => (c.svg ? Math.abs(c.svg.h - c.chartH) <= 2 && c.chartH === 160 : c.note)),
+  charts.length === 6 && charts.every((c) => (c.svg ? Math.abs(c.svg.h - c.chartH) <= 2 && c.chartH === 160 : c.note)),
   JSON.stringify(charts.map((c) => `${c.title} svg ${c.svg?.w}×${c.svg?.h} / 容器 ${c.chartH} / 占位 ${c.note}`)))
 check('每张 svg 都带 aria-label（读屏知道画的是什么）', charts.every((c) => !!c.ariaLabel), JSON.stringify(charts.map((c) => c.ariaLabel)))
 const drawn = charts.filter((c) => c.area > 0 || c.line > 0)
@@ -246,14 +250,17 @@ check('Y 轴 5 条刻度、X 轴有时刻标签',
   charts.every((c) => c.ys.length === 5 && c.xs.length >= 3),
   JSON.stringify(charts.map((c) => `${c.title} y=${c.ys.length} x=${c.xs.length}`)))
 check('X 轴标签是时刻（HH:MM），不是序号', charts.every((c) => c.xs.every((s) => /^\d{2}:\d{2}$/.test(s))), JSON.stringify(charts[0]?.xs))
-check('面积图有线下面的填充（CPU / 内存 / 硬盘；断点会把它切成两块），折线图没有（网络速率 / TCP / UDP）',
-  charts[2]?.area >= 1 && charts[3]?.area >= 1 && charts[4]?.area >= 1 && charts[0]?.area === 0 && charts[1]?.area === 0,
+check('面积图有线下面的填充（CPU / 内存 / 硬盘；断点会把它切成两块），折线图没有（网络速率 / TCP / UDP / 进程）',
+  pCpu?.area >= 1 && pMem?.area >= 1 && pDisk?.area >= 1 && pNet?.area === 0 && pConn?.area === 0,
   JSON.stringify(charts.map((c) => `${c.title} 面积 ${c.area}`)))
-check('网络速率是两条折线（下行 / 上行）', charts[0]?.line === 2, `line=${charts[0]?.line}`)
+check('网络速率是两条折线（下行 / 上行）', pNet?.line === 2, `line=${pNet?.line}`)
 // ★2026-10-16 站长要求：TCP / UDP 两条折线，且是两种不同颜色。
 check('★ TCP / UDP 连接面板：两条折线、两种不同颜色',
-  charts[1]?.line === 2 && new Set(charts[1]?.colors ?? []).size === 2,
-  JSON.stringify({ 线数: charts[1]?.line, 颜色: charts[1]?.colors }))
+  pConn?.line === 2 && new Set(pConn?.colors ?? []).size === 2,
+  JSON.stringify({ 线数: pConn?.line, 颜色: pConn?.colors }))
+check('★ 进程面板：一条折线、不填面积（计数不是容量）',
+  (pick('进程')?.line ?? 0) >= 1 && (pick('进程')?.area ?? 0) === 0,
+  JSON.stringify({ 线数: pick('进程')?.line, 面积: pick('进程')?.area }))
 // 断笔数要按**数据里到底有没有空档**来判：夹具中间挖了一段（第 12~15 点），
 // 真 hub 的历史是连续的 —— 拿「必须 ≥2 笔」去卡真数据，是我判据写错了（第一版就错在这里）。
 const gaps = METRICS.metrics.filter((m) => m.cpu === null).length
@@ -266,7 +273,7 @@ if (!REAL && !UPSTREAM) {
   //   又会把老 hub（历史桶没有 tcp/udp 两列）下连接数面板的**留白**当假红。
   //   改为：必有数据的四块都画出了线；连接数面板缺列时允许留白。
   check('真数据：该有数据的面板都画出了线（连接数面板缺列时留白，不算断）',
-    [0, 2, 3, 4].every((i) => (charts[i]?.breaks ?? []).some((n) => n >= 1)),
+    [pNet, pCpu, pMem, pDisk].every((c) => (c?.breaks ?? []).some((n) => n >= 1)),
     JSON.stringify(charts.map((c) => `${c.title} 断笔 ${c.breaks.join(',')}`)))
 }
 
@@ -274,19 +281,19 @@ if (!REAL && !UPSTREAM) {
   const maxCpu = Math.max(...METRICS.metrics.map((m) => m.cpu ?? 0))
   const cpuTicks = quarters(axisTop(maxCpu, 4, 10, 100)).map((v) => `${v}%`)
   check(`CPU 的 Y 轴刻度就是 quarters(axisTop(max))（${cpuTicks.join(' / ')}）`,
-    JSON.stringify(charts[2]?.ys) === JSON.stringify(cpuTicks), JSON.stringify(charts[2]?.ys))
-  check('网络速率的 Y 轴带 /s 单位', (charts[0]?.ys ?? []).every((s) => s.endsWith('/s')), JSON.stringify(charts[0]?.ys))
+    JSON.stringify(pCpu?.ys) === JSON.stringify(cpuTicks), JSON.stringify(pCpu?.ys))
+  check('网络速率的 Y 轴带 /s 单位', (pNet?.ys ?? []).every((s) => s.endsWith('/s')), JSON.stringify(pNet?.ys))
   check('内存 / 硬盘的 Y 轴按字节印',
-    (charts[3]?.ys ?? []).every((s) => /B$/.test(s)) && (charts[4]?.ys ?? []).every((s) => /B$/.test(s)),
-    JSON.stringify({ 内存: charts[3]?.ys, 硬盘: charts[4]?.ys }))
+    (pMem?.ys ?? []).every((s) => /B$/.test(s)) && (pDisk?.ys ?? []).every((s) => /B$/.test(s)),
+    JSON.stringify({ 内存: pMem?.ys, 硬盘: pDisk?.ys }))
   const maxConn = Math.max(...METRICS.metrics.map((m) => Math.max(m.tcp ?? 0, m.udp ?? 0)))
   // ★与页面同式（2026-10-16）：轴顶补到 4 的倍数 —— axisTop 会给 6 / 10 / 30 这类，
   //   quarters 就带 x.5；夹具峰值 9 正是那个坑（axisTop = 10 → 补到 12）。页面若漏补，这里必红。
   const connTop = axisTop(maxConn, 4, 10)
   const connTicks = quarters(connTop + ((4 - (connTop % 4)) % 4)).map(String)
   check(`TCP / UDP 的 Y 轴刻度就是 quarters(轴顶补整)（${connTicks.join(' / ')}）、纯整数无单位`,
-    JSON.stringify(charts[1]?.ys) === JSON.stringify(connTicks) && connTicks.every((s) => /^\d+$/.test(s)),
-    JSON.stringify(charts[1]?.ys))
+    JSON.stringify(pConn?.ys) === JSON.stringify(connTicks) && connTicks.every((s) => /^\d+$/.test(s)),
+    JSON.stringify(pConn?.ys))
 }
 
 // 悬停：鼠标落到 CPU 那块绘图区中间，应该出一枚 tooltip（时间戳 + CPU + 带 % 的值）
@@ -316,7 +323,7 @@ await sleep(250)
 const tipConn = await js(`(() => { const el = [...document.querySelectorAll('div')].find((d) => /TCP/.test(d.textContent || '') && d.className.includes('pointer-events-none') && d.className.includes('rounded-lg')); return el ? el.textContent : null })()`)
 // ★（2026-10-16 审出）老 hub（历史桶没有 tcp/udp 两列）上面板本就留白、tooltip 不渲染 ——
 //   只有面板画出了线才要求悬停出两条线的名字，留白时跳过。
-if ((charts[1]?.breaks ?? []).some((n) => n >= 1)) {
+if ((pConn?.breaks ?? []).some((n) => n >= 1)) {
   check('★ TCP / UDP 面板悬停出 tooltip：两条线的名字都在（TCP / UDP）', !!tipConn && /TCP/.test(tipConn) && /UDP/.test(tipConn), JSON.stringify(tipConn))
 } else {
   console.log('SKIP  ★ TCP / UDP 面板 tooltip（这台 hub 的历史桶没有连接数列，面板留白）')

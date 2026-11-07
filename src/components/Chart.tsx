@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 
 import { ChartTooltip } from "@/components/ChartTooltip"
-import { clockFor, innerTicks, nearestIndexByTime, quarters, timeTicks, zoomSpan } from "@/lib/format"
+import { autoRange, clockFor, innerTicks, nearestIndexByTime, quarters, timeTicks, zoomSpan } from "@/lib/format"
 
 /**
  * 零依赖的时间序列图：替掉 recharts（它给详情页背了 384KB 原始 / 110KB gzip 的包，
@@ -63,26 +63,8 @@ function extentOf(view: ChartRow[], keys: string[]): [number, number] | null {
   return lo === Infinity ? null : [lo, hi]
 }
 
-/**
- * 自动刻度的整齐步长：把量程摊成 count 格，每格取「1 / 2 / 2.5 / 5 / 10 × 10^k」里第一个够大的，
- * 再把上下沿各向外扩到步长的整数倍 —— 就是原来 recharts `domain={["auto","auto"]}` 那套效果
- * （延迟轴不从 0 起：这些线路活在一条窄带里，锚到 0 会把起伏压平）。
- */
-function niceScale(lo: number, hi: number, count = 4): { lo: number; hi: number; ticks: number[] } {
-  if (!(hi > lo)) {
-    const pad = Math.abs(hi) > 1 ? Math.abs(hi) * 0.1 : 1
-    lo -= pad
-    hi += pad
-  }
-  const raw = (hi - lo) / count
-  const mag = 10 ** Math.floor(Math.log10(Math.max(raw, Number.MIN_VALUE)))
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((n) => n >= raw) ?? raw
-  const low = Math.floor(lo / step) * step
-  const high = Math.ceil(hi / step) * step
-  const ticks: number[] = []
-  for (let v = low; v <= high + step / 2; v += step) ticks.push(Math.round(v * 1e6) / 1e6)
-  return { lo: low, hi: high, ticks }
-}
+// 自动刻度在 @/lib/format：`autoRange`（撑「最近视距」+ 取整齐刻度）与它用的裸函数
+// `niceScale`，都是纯函数、带单测。这一层只把常量 AUTO_MIN_SPAN_RATIO 传进去。
 
 /**
  * 自动量程的「最近视距」：Y 轴跨度至少摊开顶端值的这个比例，再窄的波动不再往里怼。
@@ -200,17 +182,12 @@ export function TimeChart({
   const span = Math.max(1, t1 - t0)
 
   // 刻度：零起点用 quarters(top)；自动档拿数据量程取整齐步长，但量程至少摊开
-  // AUTO_MIN_SPAN_RATIO 那么宽（「最近视距」，见常量注释）——窄波动不再被怼满全高。
+  // AUTO_MIN_SPAN_RATIO 那么宽（「最近视距」）——窄波动不再被怼满全高。撑窗口与取刻度的
+  // 纯函数在 @/lib/format 的 autoRange（非负数据不会被余量推到 0 以下，见那里的注释）。
   const autoExtent = domain === "auto" ? extentOf(view, series.map((s) => s.key)) : null
   const autoScale =
     domain === "auto"
-      ? (() => {
-          const [lo, hi] = autoExtent ?? [0, 1]
-          const minSpan = Math.max(hi, 1) * AUTO_MIN_SPAN_RATIO
-          if (hi - lo >= minSpan) return niceScale(lo, hi)
-          const mid = (lo + hi) / 2
-          return niceScale(mid - minSpan / 2, mid + minSpan / 2)
-        })()
+      ? autoRange(...(autoExtent ?? [0, 1]), AUTO_MIN_SPAN_RATIO)
       // ★`top` 是 hub 的 mem_total / disk_total，可能缺失或是 0（safeNodes 不校验顶层字段）：
       //   原来只给 hi 兜底、ticks 仍拿原值 —— top=0 时五枚刻度重名重叠，top 缺失时整条 Y 轴消失
       //   （2026-10-15 审出来）。

@@ -4,7 +4,7 @@
 //
 // Nothing imports it, so the bundle never includes it.
 import {
-  axisBytes, axisTop, bytes, CYCLE_SHORT, cpuName, daysUntil, despike, innerTicks, nearestIndexByTime, osName, pair, percent, quarters, rate, timeTicks, uptime, zoomSpan,
+  autoRange, axisBytes, axisTop, bytes, CYCLE_SHORT, cpuName, daysUntil, despike, innerTicks, nearestIndexByTime, niceScale, osName, pair, percent, quarters, rate, timeTicks, uptime, zoomSpan,
 } from "./format.ts"
 
 let failed = 0
@@ -30,6 +30,11 @@ eq(bytes(1024, 1), "1.0 KB", "digits 覆盖默认档位")
 // pair: one unit when both sides share it, two when they do not.
 eq(pair(300 * 1024 ** 2, 900 * 1024 ** 2), "300.00 / 900.00 MB", "同单位只写一次")
 eq(pair(300 * 1024 ** 2, 3 * 1024 ** 3), "300 MB / 3.00 GB", "跨单位各写各的")
+// ★2026-11-07（与 jikasei 1.36.1 / rakugaki 1.22.1 同轮）：pair 与 bytes() 是同一套数字，
+// 两条规则也必须同源 —— 亚字节不能落到 UNITS[-1]，四舍五入顶到 1024 要升一档。
+eq(pair(0.5, 0.9), "0 B / 0 B", "亚字节两端退回 bytes()，不印 undefined")
+eq(pair(1023.999, 1023.999), "1.00 / 1.00 KB", "四舍五入顶到 1024 时升一档")
+eq(pair(1023.4, 1023.4), "1023 / 1023 B", "没顶到 1024 就留在原档")
 
 // rate: the same three significant digits as bytes(), plus the two rules the
 // summary cards forced on it -- the KB bin prints no decimal, and every bin stops
@@ -80,6 +85,30 @@ for (const max of [3_000, 300_000, 3_000_000, 300_000_000]) {
   eq(top > max, true, `${max} B/s 的轴顶不能等于数据本身`)
   // 上界为 2 而非 1.5：梯子移除半档后，最坏情况是下一档 2 的幂。
   eq(top / max < 2, true, `${max} B/s 的轴顶不能浪费整块面板`)
+}
+
+// niceScale / autoRange（自绘图的自动量程；「最近视距」那层也在 autoRange 里）：非负数据的
+// 下沿不许落到 0 以下 —— 整窗 0ms 的线路经 minSpan 撑开后原来会印出「-0.2ms」「-0.1ms」
+// 刻度（2026-11-07）。
+{
+  // 这组是**当前真实调用路径**（延迟图 domain="auto"）：[0,0] → 撑 0.25 → 取刻度。
+  const flat0 = autoRange(0, 0, 0.25)
+  eq(flat0.lo, 0, "视距撑开后的 0ms：下沿是 0")
+  eq(flat0.ticks.every((v) => v >= 0), true, "视距撑开后的 0ms：没有负刻度")
+  eq(autoRange(0.5, 0.5, 0.25).ticks.every((v) => v >= 0), true, "平直 0.5ms 不出负刻度")
+  // 「最近视距」本身要保住：130–138 的窄带撑到 110–160。
+  eq(autoRange(130, 138, 0.25), { lo: 110, hi: 160, ticks: [110, 120, 130, 140, 150, 160] }, "窄带按视距撑开")
+  eq(autoRange(0, 100, 0.25).hi, 100, "宽量程不撑")
+  // 裸 niceScale：平直 0 走 pad 分支，也要夹住下沿。
+  eq(niceScale(0, 0).lo, 0, "平直 0ms 的裸量程：下沿是 0")
+  eq(niceScale(0, 0).ticks.every((v) => v >= 0), true, "平直 0ms 的裸量程：没有负刻度")
+  eq(niceScale(20, 20).ticks, [18, 19, 20, 21, 22], "平直 20ms：±10% 余量")
+  // 负数数据照旧落在 0 以下 —— 这条护栏只对非负数生效。
+  eq(niceScale(-3, -3).ticks.every((v) => v < 0), true, "负数数据：刻度仍在 0 以下")
+  eq(niceScale(-3, -3).ticks.some((v) => v <= -3) && niceScale(-3, -3).ticks.some((v) => v >= -3), true, "负数数据：范围覆盖数据")
+  // 普通量程：上下沿各向外扩到步长的整数倍（延迟轴不从 0 起）。
+  eq(niceScale(184, 300), { lo: 150, hi: 300, ticks: [150, 200, 250, 300] }, "普通量程扩到整步长")
+  eq(niceScale(184, 301).hi, 350, "轴顶盖得住数据（301 落在下一格）")
 }
 
 // timeTicks: round clock values, phased on local midnight rather than the epoch,

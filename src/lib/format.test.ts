@@ -4,7 +4,7 @@
 //
 // Nothing imports it, so the bundle never includes it.
 import {
-  autoRange, axisBytes, axisTop, bytes, CYCLE_SHORT, cpuName, daysUntil, despike, innerTicks, nearestIndexByTime, niceScale, osName, pair, percent, quarters, rate, timeTicks, uptime, zoomSpan,
+  autoRange, axisBytes, axisTop, bytes, currencySymbol, CYCLE_SHORT, cpuName, daysUntil, despike, innerTicks, money, moneyAmount, nearestIndexByTime, niceScale, osName, pair, percent, quarters, rate, timeTicks, uptime, zoomSpan,
 } from "./format.ts"
 
 let failed = 0
@@ -252,6 +252,56 @@ eq(Object.keys(CYCLE_SHORT).sort(), ["biennial", "monthly", "once", "quarterly",
   // 比现在还窄的量程不许被放大（floor 取 min(floor, span)）
   const d1 = R(0, 0.02, 0.01, 0.5, 4, 1)
   eq(spanOf(d1) > 0.02, true, `比下限还窄的量程：外滚照样变大、不被地板卡住（${spanOf(d1).toFixed(3)}）`)
+}
+
+// ★2026-11-09：币种表是普通对象，`SYMBOLS["constructor"]` 取到的是 Object 构造函数 ——
+// 旧版 `(typeof currency === "string" && SYMBOLS[currency]) || ""` 让 `money(47, "constructor")`
+// 印出「function Object() { [native code] }47.00」（实测）。必须走 Object.hasOwn。
+{
+  eq(currencySymbol("CNY"), "¥", "已知币种给符号")
+  eq(currencySymbol("constructor"), "", "原型键不算币种（constructor）")
+  eq(currencySymbol("__proto__"), "", "原型键不算币种（__proto__）")
+  eq(currencySymbol("toString"), "", "原型键不算币种（toString）")
+  eq(money(47, "CNY"), "¥47.00", "money：有符号币种")
+  eq(money(47, "constructor"), "47.00 constructor", "money：原型键退回后缀代码，不印函数源码")
+  eq(money(47, "__proto__"), "47.00 __proto__", "money：__proto__ 同样退回后缀代码")
+  eq(moneyAmount(47, "toString"), "47.00 toString", "moneyAmount：原型键不再被当成已知币种")
+  eq(money(47, "ABC"), "47.00 ABC", "未知币种退回后缀代码")
+}
+
+// ★2026-11-09：bytes() 缺进位 —— 1023.6 B 旧版印成「1024 B」、1048575 B 印成「1024 KB」，
+// 与 pair()/rate() 的口径（顶到 1024 要升档）不一致。
+{
+  eq(bytes(1023.6), "1.00 KB", "四舍五入顶到 1024 要升档（B → KB）")
+  eq(bytes(1048575), "1.00 MB", "四舍五入顶到 1024 要升档（KB → MB）")
+  eq(bytes(1023), "1023 B", "没顶到 1024 就留在原档")
+  eq(bytes(1024 ** 3 - 1), "1.00 GB", "GB 边界同样升档")
+  eq(axisBytes(1048575), "1 MB", "轴刻度同一条进位规则（digits 由 axisBytes 指定）")
+}
+
+// ★2026-11-09：daysUntil 改成按**日历日**求差。旧版按 24 小时求商，夏令时回拨那天（25 小时）
+// 会把「明天到期」算成 2 天；顺带「今天」也曾返回 -0。
+{
+  const pad = (n: number) => String(n).padStart(2, "0")
+  const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  // 用「本地年月日 + n」构造，避免用 +86400000 在夏令时那天跨不过去。
+  const dayOffset = (n: number) => {
+    const t = new Date()
+    return new Date(t.getFullYear(), t.getMonth(), t.getDate() + n)
+  }
+  eq(Object.is(daysUntil(iso(new Date())), 0), true, "今天 → +0（不是 -0）")
+  eq(daysUntil(iso(dayOffset(1))), 1, "明天 → 1")
+  eq(daysUntil(iso(dayOffset(7))), 7, "一周后 → 7")
+  eq(daysUntil(iso(dayOffset(-2))), -2, "两天前 → -2")
+  eq(daysUntil("2026-11-09 23:00:00"), daysUntil("2026-11-09"), "空格写法按本地日归零，与 date-only 同解")
+  eq(daysUntil("不是日期"), null, "坏串 → null")
+}
+
+// ★2026-11-09：axisTop 的退化输入不再把 NaN 往下传（`max` 是 NaN 时原来整条轴都是 NaN）。
+{
+  eq(axisTop(Number.NaN, 4, 10), 4, "max 坏掉时退回 floor")
+  eq(Number.isNaN(axisTop(Number.NaN, Number.NaN, 10)), false, "两者都坏时也返回有限值")
+  eq(axisTop(0, 0, 10), 0, "0/0 仍是 0（TimeChart 有 top>0 兜底）")
 }
 
 if (failed) {

@@ -297,7 +297,11 @@ export default function App() {
   }, [closed, loadMe])
 
   useEffect(() => {
-    if (me && !me.public_page && !me.authed) location.href = "/admin/"
+    // ★`=== false` 而不是 `!me.public_page`（2026-11-09 修）：hub 少发这个键（老版本、形状
+    //   漂移、中间层改包）时，`!undefined` 也为真 —— 于是**每个匿名访客**都会被弹去 /admin/。
+    //   本主题对其它可选字段（history_days / last_seen_ago / month_used…）一律降级，这里
+    //   同样按「没说不公开＝公开」处理；只有 hub 明确答 false 才跳转。
+    if (me && me.public_page === false && !me.authed) location.href = "/admin/"
   }, [me])
 
   // 沉底：**没有实时数据的机器**一律排到列表最末尾（站长 2026-10-14 的口径「离线服务器的
@@ -352,7 +356,8 @@ export default function App() {
   )
 
   // The status page is closed and nobody is signed in: redirect to the panel.
-  if (!me.public_page && !me.authed) return null
+  // （`=== false`：缺键不算关站，见上面 effect 里的说明。）
+  if (me.public_page === false && !me.authed) return null
 
   return (
     // 纵向排下来、页脚吊在最后（main 吃满剩余高度）：机器少、内容比一屏短时，

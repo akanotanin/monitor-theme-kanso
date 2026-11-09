@@ -41,11 +41,14 @@ const staging = 'release/staging'
 mkdirSync(staging, { recursive: true })
 const files = ['theme.json', 'LICENSE', 'dist']
 for (const file of files) cpSync(file, `${staging}/${file}`, { recursive: true })
+// ★preview.png 真正是「可选」的（2026-11-09 修）：原来这里 warning 一句「没有也能打」，
+//   下面开包校验却把它列成必需项 —— 缺图时先提示、再抛错，自相矛盾。现在校验清单也跟着
+//   files 走：有就查、没有就只提示。
 if (existsSync('preview.png')) {
   copyFileSync('preview.png', `${staging}/preview.png`)
   files.push('preview.png')
 } else {
-  console.warn('提示：没有 preview.png，面板里这个主题不会有缩略图')
+  console.warn('提示：没有 preview.png，面板里这个主题不会有缩略图（打包继续）')
 }
 
 const archive = 'release/theme.tar.gz'
@@ -55,7 +58,9 @@ execFileSync('tar', ['-czf', archive, '-C', staging, ...files], { stdio: 'inheri
 // 按 CRLF 也切：Windows 的 bsdtar 列出的每行末尾带 \r，只切 \n 的话每个条目都多一个尾随字符，
 // 下面那些字面量比对就会全部落空（Linux / macOS 的 tar 不受影响）。
 const listing = execFileSync('tar', ['-tzf', archive], { encoding: 'utf8' }).trim().split(/\r?\n/)
-for (const need of ['theme.json', 'dist/index.html', 'dist/favicon.svg', 'preview.png']) {
+const required = ['theme.json', 'dist/index.html', 'dist/favicon.svg']
+if (files.includes('preview.png')) required.push('preview.png')
+for (const need of required) {
   if (!listing.includes(need)) throw new Error(`包内缺 ${need}（共 ${listing.length} 项）`)
 }
 const size = statSync(archive).size

@@ -15,9 +15,19 @@ export function bytes(n: number, digits?: number): string {
   // `< 1` rather than `< 0`: a fraction of a byte puts `unitOf` at -1 and prints
   // "512 undefined".
   if (!n || n < 1) return "0 B"
-  const i = unitOf(n)
-  const v = n / 1024 ** i
-  return `${v.toFixed(i === 0 ? 0 : (digits ?? (v >= 100 ? 0 : v >= 10 ? 1 : 2)))} ${UNITS[i]}`
+  let i = unitOf(n)
+  let v = n / 1024 ** i
+  /** 小数位：B 档永远是整数，其余按三位有效数字（digits 可覆盖）。 */
+  const places = () => (i === 0 ? 0 : (digits ?? (v >= 100 ? 0 : v >= 10 ? 1 : 2)))
+  // ★进位（2026-11-09 补）：四舍五入把数值顶到 1024 时必须升一档，否则 1023.6 B 会印成
+  //   「1024 B」、1048575 B 会印成「1024 KB」—— 数值与单位对不上，也违背本函数「三位有效
+  //   数字」的口径。pair() 与 rate() 早就有这一步，pair 的注释还写着「与 bytes() 同一条
+  //   进位规则」，而 bytes() 自己一直没跟上。
+  if (i < UNITS.length - 1 && Number(v.toFixed(places())) >= 1024) {
+    i += 1
+    v = n / 1024 ** i
+  }
+  return `${v.toFixed(places())} ${UNITS[i]}`
 }
 
 /**
@@ -119,9 +129,15 @@ export function daysUntil(date?: string | null): number | null {
   // `YYYY-MM-DD HH:MM:SS` 这种空格写法 Safari 不认：只把日期与时间之间的那一个空格换成 T。
   const at = new Date(dateOnly ? `${text}T00:00:00` : text.replace(/^(\d{4}-\d{2}-\d{2}) /, "$1T"))
   if (Number.isNaN(at.getTime())) return null
-  const target = dateOnly ? at.getTime() : new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime()
-  if (Number.isNaN(target)) return null
-  return Math.ceil((target - Date.now()) / 86400000)
+  // ★按**日历日**求差，不按 24 小时求商（2026-11-09 修）：夏令时回拨那天有 25 小时，
+  //   原来 `ceil((target - Date.now()) / 86400000)` 会把「明天到期」算成 2 天（美国 11 月
+  //   第一个周日 00:00–01:00 之间必现，实测 24.5h → 2）。两边各取本地 Y/M/D 再折成 UTC
+  //   零点，差值是整数天，与夏令时、时区偏移 30/45 分钟都无关。
+  //   顺带修掉「今天」返回 `-0` 这件事：现在直接是 0。
+  const now = new Date()
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
+  const target = Date.UTC(at.getFullYear(), at.getMonth(), at.getDate())
+  return Math.round((target - today) / 86_400_000)
 }
 
 /**
@@ -133,9 +149,17 @@ export const FOREVER = "∞"
 
 const SYMBOLS: Record<string, string> = { USD: "$", CNY: "¥", EUR: "€", GBP: "£", JPY: "¥" }
 
-/** 币种对应的符号；表里没有的币种返回空串（金额那一半会退化成后缀的 ISO 代码）。 */
+/**
+ * 币种对应的符号；表里没有的币种返回空串（金额那一半会退化成后缀的 ISO 代码）。
+ *
+ * ★必须走 `Object.hasOwn`（2026-11-09 修）：`SYMBOLS` 是普通对象，`SYMBOLS["constructor"]`
+ *   / `["__proto__"]` / `["toString"]` 取到的是原型上的函数与对象，`typeof currency ===
+ *   "string"` 这道闸拦不住它 —— `money(47, "constructor")` 会把
+ *   「function Object() { [native code] }47.00」整串印到卡片上（实测）。NodeCard 的
+ *   CYCLE_SHORT / TRAFFIC_MODE_LABEL 早就是这条写法，这里两处漏了。
+ */
 export function currencySymbol(currency: string): string {
-  return (typeof currency === "string" && SYMBOLS[currency]) || ""
+  return typeof currency === "string" && Object.hasOwn(SYMBOLS, currency) ? SYMBOLS[currency] : ""
 }
 
 /**
@@ -148,7 +172,9 @@ export function moneyAmount(amount: number, currency: string): string {
   //（`node.price > 0` 那道闸挡不住数字字符串 "349" —— JS 比较会转型，随后 toFixed 就不存在）。
   const n = typeof amount === "number" && Number.isFinite(amount) ? amount : 0
   const code = typeof currency === "string" ? currency.trim() : ""
-  return SYMBOLS[code] ? n.toFixed(2) : `${n.toFixed(2)} ${code}`.trim()
+  // 与 currencySymbol 同一条闸：否则 "constructor" 这类键会让有符号那半段被当成「已知币种」，
+  // 符号却是函数（见上），拼出来就是一串函数源码。
+  return Object.hasOwn(SYMBOLS, code) ? n.toFixed(2) : `${n.toFixed(2)} ${code}`.trim()
 }
 
 export function money(amount: number, currency: string): string {
@@ -236,7 +262,8 @@ export function cpuName(name: string): string {
 const TICK_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 180, 360, 720, 1440, 2880, 10080,
   // 一周以上的窗口要走完这座阶梯：hub 1.3.2 起保留天数可到 365 天，而阶梯原来到 7 天为止——
   // 365 天的窗口（525600 分钟）按 7 天一格会画出 52 条刻度（`find` 找不到就回落到最后一档），
-  // 轴上一片线。补上 14 / 30 / 60 / 90 / 180 天，最长的窗口落在 90 天那一档，八条左右。
+  // 轴上一片线。补上 14 / 30 / 60 / 90 / 180 天：`find` 取第一个「够宽」的档，365 天实际落在
+  // **60 天**那一档（实测 6 条刻度，不是 90 天档的 8 条）。
   20160, 43200, 86400, 129600, 259200].map((m) => m * 60_000)
 
 export function timeTicks(from: number, to: number, count = 8): number[] {
@@ -281,9 +308,16 @@ export function nearestIndexByTime(rows: { ts: number }[], target: number): numb
  * a peak.
  */
 export function axisTop(max: number, floor: number, base = 10, cap = Infinity): number {
-  const target = Math.min(cap, Math.max(max, floor)) / 4
+  // ★退化输入先夹成有限值（2026-11-09 补）：`max` 是 NaN、或 max 与 floor 都是 0 时，
+  //   `log(0)` 让 scale 变成 0、阶梯里找不到步长，函数会返回 NaN / 0 —— 调用方拿到 0 还能
+  //   兜底成 1，拿到 NaN 就是整条 NaN 的轴（而且 `quarters(NaN)` 会把刻度全画成 NaN）。
+  //   现在：两者都缺 → 0（与旧行为一致，TimeChart 有 `top > 0` 兜底）；只有一边坏 → 用另一边。
+  const hi = Math.max(Number.isFinite(max) ? max : 0, Number.isFinite(floor) ? floor : 0)
+  const target = Math.min(cap, hi) / 4
+  if (!(target > 0)) return 0
   const scale = base ** Math.floor(Math.log(target) / Math.log(base))
-  const step = LADDER[base].map((m) => m * scale).find((n) => n >= target)
+  // `base` 不在阶梯表里时退回十进制 —— 原来直接 `LADDER[base].map(...)` 会抛 TypeError。
+  const step = (LADDER[base] ?? LADDER[10]).map((m) => m * scale).find((n) => n >= target)
   return Math.min(cap, (step ?? target) * 4)
 }
 

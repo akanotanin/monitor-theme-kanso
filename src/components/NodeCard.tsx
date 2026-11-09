@@ -162,13 +162,16 @@ function noteText(node: Node): string {
  * 或者旗子文件没被装上，都走这一条，不留一枚破图。
  */
 export function Country({ node }: { node: Node }) {
-  const [missing, setMissing] = useState(false)
+  // ★记「哪一张旗取不到」，不记一个布尔（2026-11-09 修）：布尔会跨 node 留下来 —— 同一个
+  //   实例先渲染一张 404 的 JP、再被换成一个正常的 DE 时，那次失败会把 DE 也退成文字徽标。
+  //   记码就自然复位（码变了，`missingCode === code` 自然为假），也不需要 effect。
+  const [missingCode, setMissingCode] = useState<string | null>(null)
   const raw = (node.country || "").trim().toUpperCase()
   // 只认两位 ISO 码：长串 / 中文 / `../` 之类会让 `<img>` 去请求一个意外路径，
   // 回退的徽标也会把名字行撑开（2026-10-20 审出）。形状不对就当没填。
   const code = /^[A-Z]{2}$/.test(raw) ? raw : ""
   if (!code) return null
-  if (missing) {
+  if (missingCode === code) {
     return (
       <Badge variant="outline" className="shrink-0 font-normal text-muted-foreground">
         {code}
@@ -187,7 +190,7 @@ export function Country({ node }: { node: Node }) {
       // 白底旗在卡片上仍有边界。画布是正方形，`object-cover` 正好裁掉上下留白，
       // `-translate-y-px` 抵消行盒与图标基线之间的 1px 落差。
       className="h-[18px] w-6 shrink-0 -translate-y-px rounded-[3px] object-cover ring-1 ring-border/70"
-      onError={() => setMissing(true)}
+      onError={() => setMissingCode(code)}
     />
   )
 }
@@ -266,6 +269,11 @@ export function NodeCard({ node, onOpen, onWarm }: {
   const note = noteText(node)
   // 「已用 / 额度」的整串（分色渲染用：前半深、后半灰）。
   const traffic = trafficFoot(node)
+  // 计费方式的说明文字：那枚图标只有形状，`title` 只在鼠标悬停时出现 —— 键盘与读屏都拿不到
+  // 语义，所以下面那个 span 补 `role="img" aria-label`（2026-11-09 补）。
+  const modeLabel = Object.hasOwn(TRAFFIC_MODE_LABEL, node.traffic_mode)
+    ? TRAFFIC_MODE_LABEL[node.traffic_mode]
+    : TRAFFIC_MODE_LABEL.sum
   // 第四格的两行速率（数值 / 单位分开渲染，见 rateParts）。
   const upRate = m ? rateParts(m.net_tx) : null
   const downRate = m ? rateParts(m.net_rx) : null
@@ -410,7 +418,11 @@ export function NodeCard({ node, onOpen, onWarm }: {
             <span className="flex shrink-0 items-center gap-1.5 text-[13px] font-semibold leading-[18px]">
               <span
                 data-net-mode={node.traffic_mode || "sum"}
-                title={`计费方式：${Object.hasOwn(TRAFFIC_MODE_LABEL, node.traffic_mode) ? TRAFFIC_MODE_LABEL[node.traffic_mode] : TRAFFIC_MODE_LABEL.sum}`}
+                title={`计费方式：${modeLabel}`}
+                // 图标本身 `aria-hidden`，语义挂在这层：读屏念「计费方式：取较大值」，
+                // 不再是一枚没有名字的图形；`title` 保留给鼠标（2026-11-09 补）。
+                role="img"
+                aria-label={`计费方式：${modeLabel}`}
                 className="flex shrink-0 items-center text-muted-foreground"
               >
                 <TrafficModeIcon mode={node.traffic_mode} />

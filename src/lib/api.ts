@@ -127,7 +127,10 @@ export async function api<T>(path: string, init?: RequestInit, timeoutMs = API_T
     }
     return res.status === 204 ? (undefined as T) : await res.json()
   } catch (err) {
-    if (err instanceof DOMException && (err.name === "AbortError" || err.name === "TimeoutError")) {
+    // ★按 `Error.name` 判，不只看 `instanceof DOMException`（2026-11-09 补）：标准浏览器抛的是
+    //   DOMException，但有的环境（polyfill、某些旧 WebKit 路径）抛的是普通 `Error`，只带
+    //   `name`。漏判的后果是「请求已取消」变成原始英文 "The operation was aborted" 端到面板上。
+    if (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError")) {
       // 外部 signal 主动取消与本地超时是两件事，别都写成「超时」。
       throw new ApiError(0, external?.aborted ? "请求已取消" : `请求超时（${Math.round(timeoutMs / 1000)} 秒）`)
     }
@@ -250,9 +253,13 @@ export function useNodes() {
         return false
       }
       dataSeq += 1
-      setNodes(safe)
-      setError(null)
-      setClosed(false)
+      // ★卸载后不再 setState（2026-11-09 补）：cleanup 只关了连接，已在事件队列里的那一帧
+      //   仍会走到这里。React 18+ 本身不报警也不会崩，但把请求/帧的收尾写干净，代价为零。
+      if (!disposed) {
+        setNodes(safe)
+        setError(null)
+        setClosed(false)
+      }
       return true
     }
 
@@ -262,11 +269,11 @@ export function useNodes() {
       inflight = api<{ nodes?: unknown }>("/nodes")
         .then((d) => {
           // 期间 WS 推来更新的快照 → 这条回包作废，别让旧快照盖掉新帧。
-          if (dataSeq !== startedAt) return
+          if (disposed || dataSeq !== startedAt) return
           if (!receive(d?.nodes)) throw new Error("节点数据格式不对")
         })
         .catch((e: Error) => {
-          if (dataSeq !== startedAt) return
+          if (disposed || dataSeq !== startedAt) return
           setError(e.message)
           if (e instanceof ApiError && e.status === 401) setClosed(true)
         })

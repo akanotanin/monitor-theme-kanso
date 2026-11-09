@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react"
 
 import { ChartTooltip } from "@/components/ChartTooltip"
 import { autoRange, clockFor, innerTicks, nearestIndexByTime, quarters, timeTicks, zoomSpan } from "@/lib/format"
@@ -196,8 +196,13 @@ export function TimeChart({
   const scale = yZoom ? { lo: yZoom.lo, hi: yZoom.hi, ticks: innerTicks(yZoom.lo, yZoom.hi) } : autoScale
   const yRange = Math.max(1e-9, scale.hi - scale.lo)
 
-  const x = (ts: number) => left + ((ts - t0) / span) * plotW
-  const y = (value: number) => TOP + plotH - ((value - scale.lo) / yRange) * plotH
+  // ★x / y 走 useCallback（2026-11-09）：下面的路径缓存以它们的**身份**为依赖，普通箭头函数
+  //   每帧都是新身份，缓存就永远不会命中。依赖只列真正参与计算的原始值。
+  const x = useCallback((ts: number) => left + ((ts - t0) / span) * plotW, [left, t0, span, plotW])
+  const y = useCallback(
+    (value: number) => TOP + plotH - ((value - scale.lo) / yRange) * plotH,
+    [plotH, scale.lo, yRange],
+  )
 
   // 滚轮监听器只装一次，量程与几何从 ref 里现读（渲染期间写 ref 是「最新值」的标准做法，
   // 放 layout effect 里保证每次渲染后都对齐）。
@@ -240,7 +245,12 @@ export function TimeChart({
       // 跨度下限：min(1ms, 自动量程的 1/4)。亚毫秒线路的自动量程本来就窄于 1ms，
       // 固定 1ms 会把第一格滚轮变成「放大 + 锚点跳走」（2026-10-15 审出来）。
       const floor = Math.min(ZOOM_MIN_SPAN, Math.max(st.autoSpan * 0.25, 1e-9))
-      setYZoom(zoomSpan({ lo: st.lo, hi: st.hi, anchor, ratio, factor: f, floor, cap: zoomCapOf(st.dataHi) }))
+      const next = zoomSpan({ lo: st.lo, hi: st.hi, anchor, ratio, factor: f, floor, cap: zoomCapOf(st.dataHi) })
+      // ★同步回写（2026-11-09）：量程平时靠上面那个 layout effect 回填，但同一帧里若来了
+      //   第二个 wheel 事件（高回报率触控板一拍能发好几个），effect 还没跑，读到的是缩放前的
+      //   lo/hi —— 那一步就被吞掉了（表现为「滚了但只放大一点点」）。先写进去，下一次接着算。
+      wheelRef.current = { ...st, lo: next.lo, hi: next.hi }
+      setYZoom(next)
     }
     el.addEventListener("wheel", onWheel, { passive: false })
     return () => el.removeEventListener("wheel", onWheel)
@@ -284,78 +294,101 @@ export function TimeChart({
     edge = cx + half
   }
 
-  /** 一条曲线：null 断开重起一笔（不连桥）。 */
-  const lineOf = (s: ChartSeries) => {
-    let d = ""
-    let pen = false
-    for (const row of view) {
-      const v = num(row[s.key])
-      if (v === null) {
-        pen = false
-        continue
+  /**
+   * 全部 path 字符串在这里生成，**只在几何或数据真的变了时**重建（2026-11-09 加缓存）。
+   *
+   * 理由：详情页每两秒收到一帧实时读数，父组件因此重渲染，而图表的 rows 与量程一个字节都
+   * 没变 —— 原来每帧都把整条折线重新拼一遍（2880 点 × 2 条线实测 2.5ms/图，七张图就是
+   * 一帧 ~18ms，手机上再乘 3–5 倍）；悬停时每一次 mousemove 也走同一条老路。x / y 现在是
+   * useCallback，依赖凑得齐，就能在「父组件重渲染、图没变」这一档直接跳过。
+   *
+   * 依赖口径：view（t0/span 都从它来）、series（颜色/线型变了要重拼）、x、y（量程与画布尺寸
+   * 的全套输入都在它们的依赖里）、plotH（面积的基线）。
+   */
+  const geometry = useMemo(() => {
+    /** 一条曲线：null 断开重起一笔（不连桥）。 */
+    const lineOf = (s: ChartSeries) => {
+      let d = ""
+      let pen = false
+      for (const row of view) {
+        const v = num(row[s.key])
+        if (v === null) {
+          pen = false
+          continue
+        }
+        d += `${pen ? "L" : "M"}${x(row.ts).toFixed(1)},${y(v).toFixed(1)}`
+        pen = true
       }
-      d += `${pen ? "L" : "M"}${x(row.ts).toFixed(1)},${y(v).toFixed(1)}`
-      pen = true
+      return d
     }
-    return d
-  }
 
-  /** 面积：每一段连续的点各自闭合成一块（同样不跨断点）。 */
-  const areasOf = (s: ChartSeries) => {
-    const out: string[] = []
-    let run: { x: number; y: number }[] = []
-    const flush = () => {
-      if (run.length < 2) {
+    /** 面积：每一段连续的点各自闭合成一块（同样不跨断点）。 */
+    const areasOf = (s: ChartSeries) => {
+      const out: string[] = []
+      let run: { x: number; y: number }[] = []
+      const flush = () => {
+        if (run.length < 2) {
+          run = []
+          return
+        }
+        const base = TOP + plotH
+        out.push(
+          `M${run[0].x.toFixed(1)},${base.toFixed(1)}` +
+            run.map((p) => `L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join("") +
+            `L${run[run.length - 1].x.toFixed(1)},${base.toFixed(1)}Z`,
+        )
         run = []
-        return
       }
-      const base = TOP + plotH
-      out.push(
-        `M${run[0].x.toFixed(1)},${base.toFixed(1)}` +
-          run.map((p) => `L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join("") +
-          `L${run[run.length - 1].x.toFixed(1)},${base.toFixed(1)}Z`,
-      )
-      run = []
-    }
-    for (const row of view) {
-      const v = num(row[s.key])
-      if (v === null) {
-        flush()
-        continue
+      for (const row of view) {
+        const v = num(row[s.key])
+        if (v === null) {
+          flush()
+          continue
+        }
+        run.push({ x: x(row.ts), y: y(v) })
       }
-      run.push({ x: x(row.ts), y: y(v) })
+      flush()
+      return out
     }
-    flush()
-    return out
-  }
 
-  /** 区间（band）：上沿去、下沿回的一块；同样不跨断点。 */
-  const bandsOf = (s: ChartSeries) => {
-    const out: string[] = []
-    let run: { x: number; lo: number; hi: number }[] = []
-    const flush = () => {
-      if (run.length < 2) {
+    /** 区间（band）：上沿去、下沿回的一块；同样不跨断点。 */
+    const bandsOf = (s: ChartSeries) => {
+      const out: string[] = []
+      let run: { x: number; lo: number; hi: number }[] = []
+      const flush = () => {
+        if (run.length < 2) {
+          run = []
+          return
+        }
+        const up = run.map((p) => `${p.x.toFixed(1)},${y(p.hi).toFixed(1)}`).join("L")
+        const down = [...run].reverse().map((p) => `${p.x.toFixed(1)},${y(p.lo).toFixed(1)}`).join("L")
+        out.push(`M${up}L${down}Z`)
         run = []
-        return
       }
-      const up = run.map((p) => `${p.x.toFixed(1)},${y(p.hi).toFixed(1)}`).join("L")
-      const down = [...run].reverse().map((p) => `${p.x.toFixed(1)},${y(p.lo).toFixed(1)}`).join("L")
-      out.push(`M${up}L${down}Z`)
-      run = []
-    }
-    for (const row of view) {
-      const pair = row[s.key]
-      const lo = num(Array.isArray(pair) ? pair[0] : null)
-      const hi = num(Array.isArray(pair) ? pair[1] : null)
-      if (lo === null || hi === null) {
-        flush()
-        continue
+      for (const row of view) {
+        const pair = row[s.key]
+        const lo = num(Array.isArray(pair) ? pair[0] : null)
+        const hi = num(Array.isArray(pair) ? pair[1] : null)
+        if (lo === null || hi === null) {
+          flush()
+          continue
+        }
+        run.push({ x: x(row.ts), lo, hi })
       }
-      run.push({ x: x(row.ts), lo, hi })
+      flush()
+      return out
     }
-    flush()
+
+    const out = new Map<string, { line: string; areas: string[]; bands: string[] }>()
+    for (const s of series) {
+      out.set(s.key, {
+        line: s.band ? "" : lineOf(s),
+        areas: s.area ? areasOf(s) : [],
+        bands: s.band ? bandsOf(s) : [],
+      })
+    }
     return out
-  }
+  }, [view, series, x, y, plotH])
 
   /**
    * ★按**时间**找最近的一行，不是按数组下标（2026-10-20 审出）。
@@ -389,7 +422,17 @@ export function TimeChart({
        整块关掉最省事；tooltip 是鼠标一离开就消失的临时卡片，同样不需要被选中。 */
     <div ref={box} data-chart="" className="relative h-full w-full select-none">
       {w > 0 && h > 0 && (
-        <svg width={w} height={h} role="img" aria-label={label} aria-description={spokenSummary} className="overflow-visible">
+        <svg
+          width={w}
+          height={h}
+          role="img"
+          aria-label={label}
+          // ★`aria-description` 是 ARIA 1.3 的东西，NVDA / JAWS 的多数版本还不认（2026-11-09
+          //   换掉）：改成 `<desc>` + `aria-describedby`，新旧读屏都能拿到那句可见区间。
+          aria-describedby={spokenSummary ? `${cid}-desc` : undefined}
+          className="overflow-visible"
+        >
+          {spokenSummary && <desc id={`${cid}-desc`}>{spokenSummary}</desc>}
           {/* 网格：只画横线（原来 `vertical={false}`），虚线、用边框色。 */}
           {scale.ticks.map((v) => (
             <line
@@ -438,19 +481,19 @@ export function TimeChart({
           <g clipPath={`url(#${cid})`}>
             {series.map((s) =>
               s.band
-                ? bandsOf(s).map((d, i) => <path key={`b${s.key}${i}`} d={d} fill={s.color} fillOpacity={0.16} stroke="none" />)
+                ? (geometry.get(s.key)?.bands ?? []).map((d, i) => <path key={`b${s.key}${i}`} d={d} fill={s.color} fillOpacity={0.16} stroke="none" />)
                 : null,
             )}
             {series.map((s) =>
               s.area ? (
-                areasOf(s).map((d, i) => <path key={`a${s.key}${i}`} d={d} fill={s.color} fillOpacity={0.15} stroke="none" />)
+                (geometry.get(s.key)?.areas ?? []).map((d, i) => <path key={`a${s.key}${i}`} d={d} fill={s.color} fillOpacity={0.15} stroke="none" />)
               ) : null,
             )}
             {/* 线：band 那一列没有线（它的值是 [低, 高]，画成一块区间），别给它生成空路径。 */}
             {series.filter((s) => !s.band).map((s) => (
               <path
                 key={`l${s.key}`}
-                d={lineOf(s)}
+                d={geometry.get(s.key)?.line ?? ""}
                 fill="none"
                 stroke={s.color}
                 strokeWidth={1.5}

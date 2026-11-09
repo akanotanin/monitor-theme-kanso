@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 
 
-import { TimeChart } from "@/components/Chart"
+import { TimeChart, type ChartSeries } from "@/components/Chart"
 import { PingTooltip } from "@/components/ChartTooltip"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -61,6 +61,31 @@ const PALETTE = [
   ...COLORS.map((stroke) => ({ stroke, dash: undefined })),
   ...COLORS.map((stroke) => ({ stroke, dash: "6 3" })),
 ]
+
+/**
+ * 探测 → 调色板里的一档。按 `pingSeries`（全量列表）的顺序取色，这样隐藏别的线路时这条线的
+ * 颜色不变；`findIndex` 落空时退回第一档（原来 `PALETTE[-1].stroke` 会抛 TypeError）。
+ */
+const shadeOf = (probes: { id: number }[], id: number) => {
+  const index = probes.findIndex((p) => p.id === id)
+  return PALETTE[(index < 0 ? 0 : index) % PALETTE.length]
+}
+
+// ★资源图那几组 series 提到模块作用域（2026-11-09）：它们原来是每次渲染新建的数组字面量，
+//   而 TimeChart 内部的路径缓存以 series 的**身份**为依赖 —— 字面量每帧都变，缓存等于没有。
+//   这几组是常量（键、名字、颜色都不随节点变），提出来才有稳定的身份。
+const RATE_SERIES: ChartSeries[] = [
+  { key: "net_rx", name: "下行", color: "var(--ok)" },
+  { key: "net_tx", name: "上行", color: "var(--chart-2)" },
+]
+const CONN_SERIES: ChartSeries[] = [
+  { key: "tcp", name: "TCP", color: "var(--chart-1)" },
+  { key: "udp", name: "UDP", color: "var(--chart-9)" },
+]
+const PROCS_SERIES: ChartSeries[] = [{ key: "procs", name: "进程", color: "var(--chart-8)" }]
+const CPU_SERIES: ChartSeries[] = [{ key: "cpu", name: "CPU", color: "var(--chart-1)", area: true }]
+const MEM_SERIES: ChartSeries[] = [{ key: "mem_used", name: "内存", color: "var(--chart-4)", area: true }]
+const DISK_SERIES: ChartSeries[] = [{ key: "disk_used", name: "硬盘", color: "var(--chart-3)", area: true }]
 
 const TABS = [
   { key: "resources", label: "资源" },
@@ -233,6 +258,20 @@ export function NodeDetail({ node, historyDays }: {
   const [failed, setFailed] = useState("")
     // Where the chart begins on screen, so its height can occupy the remainder.
   const [chartTop, setChartTop] = useState(0)
+  // 延迟图那块容器：量它的文档偏移，换算成一屏剩给图表的高度（见下面 `.h-full min-h-72` 那层）。
+  const chartBox = useRef<HTMLDivElement | null>(null)
+  // 故意不写依赖数组：每次提交都要重量（上面那排信息格会随实时读数多出/少掉几格，位置跟着变）。
+  // setChartTop 走函数式更新，值没变时 React 直接 bail out，不会形成更新链（这个盒子自己的 top
+  // 不依赖它自己的高度），所以这里不需要「稳定依赖」。
+  // oxlint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    const el = chartBox.current
+    if (!el) return
+    // `+ scrollY`：getBoundingClientRect 是视口坐标，这里要的是文档坐标，否则页面一滚动、
+    // 实时读数每两秒一帧，高度就会跟着滚动距离重算。函数式更新让「值没变」直接 bail out。
+    const top = Math.round(el.getBoundingClientRect().top + scrollY)
+    setChartTop((prev) => (prev === top ? prev : top))
+  })
   // ★「重试」（2026-10-18）：失败后点一下就是一次真重发 —— 计数进 effect 依赖。换页签也能
   //   重发，但那是碰巧；而 503 是 hub 并发上限的**预期**失败（见下面 fetch 的注释），得有一枚
   //   明说的按钮。
@@ -240,6 +279,10 @@ export function NodeDetail({ node, historyDays }: {
 
   useEffect(() => {
     let active = true
+    // ★请求要真的能取消（2026-11-09 补）：原来只靠 `active` 挡住 setState，请求本身还会跑满
+    //   30 秒 —— 快速切机器 / 切页签 / 连点「重试」时，旧窗口继续在 hub 那边建，而 hub 的
+    //   并发建窗口有上限（满了正是 503），等于自己挤自己。api() 早就支持外部 signal。
+    const control = new AbortController()
     // 历史**只取一次**：换机器 / 量程 / 页签 / 点「重试」才重发；实时读数走 node prop。
     // hub 对并发建窗口有上限（满了给 503），别拿定时轮询去打它。
     // The charts must not continue drawing the old range while the new one is in
@@ -262,7 +305,7 @@ export function NodeDetail({ node, historyDays }: {
     // 别套轻请求那条 12 秒（2026-10-20 审出）。
     api<{ metrics: Point[]; ping: PingPoint[]; probes: Probes; loss?: Loss }>(
       `/nodes/${node.id}/metrics?hours=${hours}&points=${points}&series=${series}`,
-      undefined,
+      { signal: control.signal },
       30_000,
     )
       .then((next) => { if (active) setData(next) })
@@ -270,7 +313,7 @@ export function NodeDetail({ node, historyDays }: {
         // 同 App.tsx：空消息会让错误面板看起来「没有错误」，给一句兜底。
         if (active) { setFailed(e.message || "网络错误"); setData({ metrics: [], ping: [], probes: {} }) }
       })
-    return () => { active = false }
+    return () => { active = false; control.abort() }
   }, [node.id, hours, tab, attempt])
 
   const m = node.metrics
@@ -344,7 +387,33 @@ export function NodeDetail({ node, historyDays }: {
     [pingSeries, hiddenProbes],
   )
   // Keyed on the full list, so a line keeps its shade when others are hidden.
-  const style = (id: number) => PALETTE[pingSeries.findIndex((p) => p.id === id) % PALETTE.length]
+  // ★`findIndex` 为 -1 时 `PALETTE[-1]` 是 undefined，`.stroke` 会当场抛（2026-11-09 补：
+  //   目前 id 都来自 pingSeries，理论不可达，但这条兜底是零成本的 —— 越界就退回第一档）。
+  const style = (id: number) => shadeOf(pingSeries, id)
+
+  // ★延迟图的 series 数组也要稳定（2026-11-09）：TimeChart 的路径缓存以 series 的**身份**为
+  //   依赖，这个数组原来在 JSX 里现建 —— 悬停一次鼠标就换一次身份，缓存等于没有（而延迟图
+  //   恰恰是唯一支持滚轮缩放、hover 最频繁的那张）。输入只有「可见探测 / 削峰 / 调色板」。
+  const latencySeries = useMemo<ChartSeries[]>(() => {
+    const band: ChartSeries[] = shownProbes.length === 1
+      ? shownProbes.map((s) => ({
+          key: `${smooth ? "c" : "b"}${s.id}`,
+          name: s.name,
+          color: shadeOf(pingSeries, s.id).stroke,
+          band: true,
+        }))
+      : []
+    return [
+      // 区间只在屏上只有一个探测时画：四个叠在一起会糊成一片，还会把轴拉宽。
+      ...band,
+      ...shownProbes.map((s) => ({
+        key: `${smooth ? "s" : "t"}${s.id}`,
+        name: s.name,
+        color: shadeOf(pingSeries, s.id).stroke,
+        dash: shadeOf(pingSeries, s.id).dash,
+      })),
+    ]
+  }, [shownProbes, smooth, pingSeries])
 
   // The hub stamps every sample with its bucket rather than the second the probe
   // finished, so probes reporting at the bucket's rate share rows instead of each
@@ -520,11 +589,12 @@ export function NodeDetail({ node, historyDays }: {
           // 高度仍钉在**这一层**（`100svh - 顶 - 1rem`），白卡 `h-full` 填进来 —— 卡壳的 26px 在
           // 这一层之内，所以「一屏放得下、不滚动」的性质与从前完全一样（verify_detail_charts 断它）。
           <div
-            // `+ scrollY`, because getBoundingClientRect is measured from the
-            // viewport and this callback runs on every render; a live node
-            // re-renders every two seconds, so a scrolled page would re-derive the
-            // height from a top that has moved.
-            ref={(el) => { if (el) setChartTop(el.getBoundingClientRect().top + scrollY) }}
+            // 高度按这个盒子的**文档偏移**算（见下）。★量法从内联 ref 回调换成 useLayoutEffect
+            //   （2026-11-09）：内联 ref 每次渲染都是新身份，React 每帧都要 detach/attach 一遍；
+            //   而 setChartTop 用函数式更新，值没变就原地 bail out，不会多渲染一轮。
+            //   `+ scrollY` 仍不可省：getBoundingClientRect 是视口坐标，而这里要的是文档坐标，
+            //   不然页面一滚动、实时读数每两秒一帧，高度就会跟着滚动的距离重新算。
+            ref={chartBox}
             style={chartTop ? { height: `calc(100svh - ${Math.round(chartTop)}px - 1rem)` } : undefined}
             className="h-full min-h-72">
             <Panel fill title="网络延迟">
@@ -541,24 +611,7 @@ export function NodeDetail({ node, historyDays }: {
                 <TimeChart
                   wheelZoom
                   rows={pingRows}
-                  series={[
-                    // 区间（band）只在屏上只有一个探测时画：四个叠在一起会糊成一片，还会把轴拉宽
-                    // （原注释那段「四个的 band 会互相叠成雾」）。
-                    ...(shownProbes.length === 1
-                      ? shownProbes.map((s) => ({
-                          key: `${smooth ? "c" : "b"}${s.id}`,
-                          name: s.name,
-                          color: style(s.id).stroke,
-                          band: true,
-                        }))
-                      : []),
-                    ...shownProbes.map((s) => ({
-                      key: `${smooth ? "s" : "t"}${s.id}`,
-                      name: s.name,
-                      color: style(s.id).stroke,
-                      dash: style(s.id).dash,
-                    })),
-                  ]}
+                  series={latencySeries}
                   hours={hours}
                   // 延迟轴不从 0 起：这些线路活在一条窄带里，锚到 0 会把起伏压平。
                   domain="auto"
@@ -635,10 +688,7 @@ export function NodeDetail({ node, historyDays }: {
           <Panel title="网络速率">
             <TimeChart
               rows={metricRows}
-              series={[
-                { key: "net_rx", name: "下行", color: "var(--ok)" },
-                { key: "net_tx", name: "上行", color: "var(--chart-2)" },
-              ]}
+              series={RATE_SERIES}
               hours={hours}
               top={tops.rate}
               unit="/s"
@@ -655,10 +705,7 @@ export function NodeDetail({ node, historyDays }: {
           <Panel title="TCP / UDP 连接">
             <TimeChart
               rows={metricRows}
-              series={[
-                { key: "tcp", name: "TCP", color: "var(--chart-1)" },
-                { key: "udp", name: "UDP", color: "var(--chart-9)" },
-              ]}
+              series={CONN_SERIES}
               hours={hours}
               top={tops.conn}
               label="TCP / UDP 连接数走势"
@@ -671,7 +718,7 @@ export function NodeDetail({ node, historyDays }: {
           <Panel title={m && typeof m.procs === "number" ? `进程 · ${m.procs}` : "进程"}>
             <TimeChart
               rows={metricRows}
-              series={[{ key: "procs", name: "进程", color: "var(--chart-8)" }]}
+              series={PROCS_SERIES}
               hours={hours}
               top={tops.procs}
               label="进程数走势"
@@ -681,7 +728,7 @@ export function NodeDetail({ node, historyDays }: {
           <Panel title="CPU">
             <TimeChart
               rows={metricRows}
-              series={[{ key: "cpu", name: "CPU", color: "var(--chart-1)", area: true }]}
+              series={CPU_SERIES}
               hours={hours}
               top={tops.cpu}
               unit="%"
@@ -699,7 +746,7 @@ export function NodeDetail({ node, historyDays }: {
             {memTotal > 0 ? (
               <TimeChart
                 rows={metricRows}
-                series={[{ key: "mem_used", name: "内存", color: "var(--chart-4)", area: true }]}
+                series={MEM_SERIES}
                 hours={hours}
                 top={memTotal}
                 yFormat={axisBytes}
@@ -720,7 +767,7 @@ export function NodeDetail({ node, historyDays }: {
             {diskTotal > 0 ? (
               <TimeChart
                 rows={metricRows}
-                series={[{ key: "disk_used", name: "硬盘", color: "var(--chart-3)", area: true }]}
+                series={DISK_SERIES}
                 hours={hours}
                 top={diskTotal}
                 yFormat={axisBytes}
